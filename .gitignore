@@ -130,6 +130,7 @@ celerybeat.pid
 .venv
 env/
 venv/
+venv_ECE276C_Project/
 ENV/
 env.bak/
 venv.bak/
