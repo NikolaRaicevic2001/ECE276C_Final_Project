@@ -249,8 +249,11 @@ class PandaEnvironment:
             print(f"Joint {i}: {joint_info[1].decode('utf-8')}")
 
 
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> 1681d17f76814bad7ae0bb968fca9cf7202ccef2
 def main():
     # Create and setup environment
     env = PandaEnvironment()
@@ -364,6 +367,88 @@ def main():
     except KeyboardInterrupt:
         print("\nSimulation stopped by user")
         env.close()
+
+    # #######################
+    # #### PROBLEM SETUP ####
+    # #######################
+
+    # # Initialize PyBullet
+    # p.connect(p.GUI)
+    # p.setAdditionalSearchPath(pybullet_data.getDataPath()) # For default URDFs
+    # p.setGravity(0, 0, -9.8)
+
+    # # Load the plane and robot arm
+    # ground_id = p.loadURDF("plane.urdf")
+    # arm_id = p.loadURDF("three_link_arm.urdf", [0, 0, 0], useFixedBase=True)
+
+    # # Add Collision Objects
+    # collision_ids = [ground_id] # add the ground to the collision list
+    # collision_positions = [[0.3, 0.5, 0.251], [-0.3, 0.3, 0.101], [-1, -0.15, 0.251], [-1, -0.15, 0.752], [-0.5, -1, 0.251], [0.5, -0.35, 0.201], [0.5, -0.35, 0.602]]
+    # collision_orientations =  [[0, 0, 0.5], [0, 0, 0.2], [0, 0, 0],[0, 0, 1], [0, 0, 0], [0, 0, .25], [0, 0, 0.5]]
+    # collision_scales = [0.5, 0.25, 0.5, 0.5, 0.5, 0.4, 0.4]
+    # for i in range(len(collision_scales)):
+    #     collision_ids.append(p.loadURDF("cube.urdf",
+    #         basePosition=collision_positions[i],  # Position of the cube
+    #         baseOrientation=p.getQuaternionFromEuler(collision_orientations[i]),  # Orientation of the cube
+    #         globalScaling=collision_scales[i]  # Scale the cube to half size
+    #     ))
+
+    # # Goal Joint Positions for the Robot
+    # goal_positions = [[-2.54, 0.15, -0.15], [-1.82,0.15,-0.15],[0.5, 0.15,-0.15], [1.7,0.2,-0.15],[-2.54, 0.15, -0.15]]
+
+    # # Joint Limits of the Robot
+    # joint_limits = [[-np.pi, np.pi], [0, np.pi], [-np.pi, np.pi]]
+
+    # # A3xN path array that will be filled with waypoints through all the goal positions
+    # path_saved = np.array([[-2.54, 0.15, -0.15]]) # Start at the first goal position
+
+    # ####################################################################################################
+    # #### YOUR CODE HERE: RUN RRT MOTION PLANNER FOR ALL goal_positions (starting at goal position 1) ###
+    # ####################################################################################################
+   
+
+
+    # ################################################################################
+    # ####  RUN THE SIMULATION AND MOVE THE ROBOT ALONG PATH_SAVED ###################
+    # ################################################################################
+
+    # # Set the initial joint positions
+    # for joint_index, joint_pos in enumerate(goal_positions[0]):
+    #     p.resetJointState(arm_id, joint_index, joint_pos)
+
+    # # Move through the waypoints
+    # for waypoint in path_saved:
+    #     # "move" to next waypoints
+    #     for joint_index, joint_pos in enumerate(waypoint):
+    #     # run velocity control until waypoint is reached
+    #         while True:
+    #             #get current joint positions
+    #             goal_positions = [p.getJointState(arm_id, i)[0] for i in range(3)]
+    #             # calculate the displacement to reach the next waypoint
+    #             displacement_to_waypoint = waypoint-goal_positions
+    #             # check if goal is reached
+    #             max_speed = 0.05
+    #             if(np.linalg.norm(displacement_to_waypoint) < max_speed):
+    #                 break
+    #             else:
+    #                 # calculate the "velocity" to reach the next waypoint
+    #                 velocities = np.min((np.linalg.norm(displacement_to_waypoint), max_speed))*displacement_to_waypoint/np.linalg.norm(displacement_to_waypoint)
+    #                 for joint_index, joint_step in enumerate(velocities):
+    #                     p.setJointMotorControl2(
+    #                         bodyIndex=arm_id,
+    #                         jointIndex=joint_index,
+    #                         controlMode=p.VELOCITY_CONTROL,
+    #                         targetVelocity=joint_step,
+    #                     )
+                        
+    #             #Take a simulation step
+    #             p.stepSimulation()            
+    #     time.sleep(1.0 / 240.0)
+
+
+    # # Disconnect from PyBullet
+    # time.sleep(100) # Remove this line -- it is just to keep the GUI open when you first run this starter code
+    # p.disconnect()
 
 if __name__ == "__main__":
     main()
