@@ -64,9 +64,11 @@ def main():
 
         # Plan path using RRT
         path = planner.plan(start_config, np.array(target_pos), tolerance=0.05)
+        planner.visualize_path(path)
 
         if path is not None:
             print("Path found! Executing...")
+            print(path)
             if execute_path(path):
                 print("Path executed successfully!")
                 return True, path[-1]  # Return last configuration
@@ -92,6 +94,7 @@ def main():
                     if key == ord('p'):
                         # Get target points
                         targets = env.get_target_points()
+                        print(targets)
 
                         # Start from home position
                         current_config = env.home_positions
@@ -101,7 +104,7 @@ def main():
                         for i, target in enumerate(targets):
                             print(f"\nMoving to target {i+1}/{len(targets)}")
                             success, new_config = plan_and_execute(current_config, target)
-
+                            print(success)
                             if success:
                                 current_config = new_config
                                 time.sleep(0.5)  # Pause between targets

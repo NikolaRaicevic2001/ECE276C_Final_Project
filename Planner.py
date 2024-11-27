@@ -95,6 +95,7 @@ class RRTManipulatorPlanner:
 
         return nearest_node
 
+
     def extend(self, from_config: np.ndarray, to_config: np.ndarray) -> Tuple[np.ndarray, List[np.ndarray]]:
         """
         Extend tree from one configuration toward another
@@ -140,7 +141,7 @@ class RRTManipulatorPlanner:
         start_node = Node(start_config)
         self.nodes = [start_node]
 
-        best_distance = float('inf')
+        best_distance = np.linalg.norm(self.forward_kinematics(start_config) - target_position)
         best_node = None
 
         for i in range(self.max_iterations):
