@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 
-def get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=1000):
+def get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=1000, yaw=20, pitch=20, roll=0):
     # Adjust camera position to better view the Panda arm
-    view_matrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0, 0.5], distance=1.5, yaw=45, pitch=-30, roll=0, upAxisIndex=2)
+    view_matrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0, 0.5], distance=1.5, yaw=yaw, pitch=pitch, roll=roll, upAxisIndex=2)
     projection_matrix = p.computeProjectionMatrixFOV(fov=fov, aspect=width/height, nearVal=near_plane, farVal=far_plane)
 
     # Get camera image
@@ -15,6 +15,7 @@ def get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=10
 
     # Convert depth buffer to a numpy array
     depth = np.array(depth_buffer)
+    depth = np.reshape(depth_buffer, (height, width))
 
     # Calculate focal length
     focal_length = 0.5 * height / (np.tan(0.5*np.pi/180*fov))
@@ -23,7 +24,7 @@ def get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=10
     x, y = np.meshgrid(np.arange(width), np.arange(height))
 
     # Calculate 3D coordinates
-    z = far_plane * near_plane / (far_plane - (far_plane - near_plane) * depth)
+    z = far_plane * near_plane / (far_plane -(far_plane - near_plane) * depth)
     x = (x - width/2) * z / focal_length
     y = (y - height/2) * z / focal_length
 
@@ -35,10 +36,31 @@ def get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=10
     R = view_matrix[:3, :3]
     t = view_matrix[:3, 3]
 
-    # Transform points to world coordinates
-    # point_cloud_world = np.dot(point_cloud, R.T) + t
+    print(f'R = {R}')
+    print(f't = {t}')
 
-    return point_cloud
+    Rotation_Yaw = np.array([[np.cos(np.radians(yaw)), 0, np.sin(np.radians(yaw))], [0, 1, 0], [-np.sin(np.radians(yaw)), 0, np.cos(np.radians(yaw))]])
+    Rotation_Pitch = np.array([[1, 0, 0], [0, np.cos(np.radians(pitch)), -np.sin(np.radians(pitch))], [0, np.sin(np.radians(pitch)), np.cos(np.radians(pitch))]])
+
+    # Transform points to world coordinates
+    Translation = np.array([[-1, 0, 0], [0, 0, 1], [0, -1, 0]]) @ t
+    Rotation_Matrix = Rotation_Pitch @ Rotation_Yaw @ R
+    point_cloud_world = np.dot(point_cloud, Rotation_Matrix.T) + Translation
+
+    # Transform to world coordinates
+    # point_cloud_world = (R @ point_cloud.T).T + t
+# np.array([[0.9396926,  0.0000000, 0.3420202], [0.0000000,  1.0000000,  0.0000000], [-0.3420202,  0.0000000,  0.9396926]])
+
+#     [[ 0.93969274  0.34202012 -0.        ]
+#     [ 0.          0.          1.00000012]
+#     [ 0.34202009 -0.93969262 -0.        ]]
+
+# Rotaiton Matrix [[ 1.00000009e+00 -7.68620909e-08  0.00000000e+00]
+#  [ 0.00000000e+00  0.00000000e+00  1.00000012e+00]
+#  [-1.45639098e-07 -9.99999989e-01  0.00000000e+00]]
+
+
+    return point_cloud_world
 
 if __name__ == "__main__":
     physics_client = p.connect(p.GUI)
@@ -63,7 +85,7 @@ if __name__ == "__main__":
 
     # Initializing Simulation
     p.setRealTimeSimulation(0)
-    duration = 10
+    duration = 30
     fps = 30
     time_steps = int(duration * fps)
     dt = 1.0 / fps
