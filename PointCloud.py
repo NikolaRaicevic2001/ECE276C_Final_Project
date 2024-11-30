@@ -133,9 +133,9 @@ if __name__ == "__main__":
 
     # Add Collision Objects
     collision_ids = [ground_id] # add the ground to the collision list
-    collision_positions = [[0.3, 0.5, 0.251]]
-    collision_orientations =  [[0, 0, 0.5]]
-    collision_scales = [0.5]
+    collision_positions = [[0.5, -0.3, 0.72],[-0.3, -0.3, 0.72]]
+    collision_orientations =  [[0, 0, 0.5],[0, 0, 0.5]]
+    collision_scales = [0.2, 0.2]
     for i in range(len(collision_scales)):
         collision_ids.append(p.loadURDF("cube.urdf",
             basePosition=collision_positions[i],  # Position of the cube
