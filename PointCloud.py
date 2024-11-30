@@ -4,17 +4,83 @@ import pybullet_data
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import os
 
-def get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=1000, yaw=20, pitch=20, roll=0):
+def draw_camera_frame(Translation, Rotation_Matrix, size=0.2):
+    ''' Draw the camera frame in the PyBullet simulation '''
+    # Extract camera position and orientation from view matrix
+    cam_pos = Translation
+    cam_rot = Rotation_Matrix
+    
+    # Define coordinate axes
+    axes = np.array([[size, 0, 0], [0, size, 0], [0, 0, size]])
+    
+    # Transform axes to camera frame
+    transformed_axes = cam_rot.dot(axes.T).T + cam_pos
+    
+    # Draw coordinate axes
+    colors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # Red, Green, Blue for X, Y, Z
+    labels = ['X', 'Y', 'Z']
+    for i in range(3):
+        p.addUserDebugLine(cam_pos, transformed_axes[i], colors[i], lineWidth=2)
+        p.addUserDebugText(labels[i], transformed_axes[i], colors[i], textSize=1.5)
+    
+    # Add "Camera" label at the camera position
+    p.addUserDebugText("Camera", cam_pos, [1, 1, 1], textSize=1.5)
+
+def compute_view_matrix(camera_target_position, distance, yaw, pitch, roll):
+    """
+    Compute the view matrix for a camera.
+    
+    Args:
+    camera_target_position (list): The target position [x, y, z] the camera is looking at.
+    distance (float): The distance from the camera to the target.
+    yaw (float): Rotation around the y-axis in degrees (in camera frame, world z-axis).
+    pitch (float): Rotation around the z-axis in degrees (in camera frame, world -x-axis).
+    roll (float): Rotation around the x-axis in degrees (in camera frame, world x-axis).
+    
+    Returns:
+    numpy.ndarray: The 4x4 view matrix.
+    """
+    # Convert angles to radians
+    y = np.radians(yaw)
+    p = np.radians(pitch)
+    r = np.radians(roll)
+    
+    # Compute view matrix elements (rotation part)
+    view_matrix = np.array([
+        [np.cos(y)*np.cos(p), np.cos(y)*np.sin(p)*np.sin(r) - np.sin(y)*np.cos(r), np.cos(y)*np.sin(p)*np.cos(r) + np.sin(y)*np.sin(r), 0],
+        [np.sin(y)*np.cos(p), np.sin(y)*np.sin(p)*np.sin(r) + np.cos(y)*np.cos(r), np.sin(y)*np.sin(p)*np.cos(r) - np.cos(y)*np.sin(r), 0],
+        [-np.sin(p), np.cos(p)*np.sin(r), np.cos(p)*np.cos(r), 0],
+        [0, 0, 0, 1]
+    ])
+    
+    # Compute camera position
+    camera_offset = np.array([
+        np.sin(y) * distance,
+        -np.sin(p) * np.cos(y) * distance,
+        -np.cos(p) * np.cos(y) * distance
+    ])
+    
+    camera_pos = np.array(camera_target_position) - camera_offset
+    
+    # Add translation to view matrix
+    view_matrix[0, 3] = -np.dot(view_matrix[0, :3], camera_pos)
+    view_matrix[1, 3] = -np.dot(view_matrix[1, :3], camera_pos)
+    view_matrix[2, 3] = -np.dot(view_matrix[2, :3], camera_pos)
+    
+    return view_matrix
+
+def get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=1000, cameraTargetPosition = [0, 0, 0.9],distance=1.3, yaw=0, pitch=0, roll=0):
+    ''' Get the point cloud from the camera view '''
     # Adjust camera position to better view the Panda arm
-    view_matrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0, 0.5], distance=1.5, yaw=yaw, pitch=pitch, roll=roll, upAxisIndex=2)
+    view_matrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=cameraTargetPosition, distance=distance, yaw=yaw, pitch=pitch, roll=roll, upAxisIndex=2)
     projection_matrix = p.computeProjectionMatrixFOV(fov=fov, aspect=width/height, nearVal=near_plane, farVal=far_plane)
 
     # Get camera image
     _, _, rgb_image, depth_buffer, _ = p.getCameraImage(width, height, viewMatrix=view_matrix, projectionMatrix=projection_matrix, renderer=p.ER_BULLET_HARDWARE_OPENGL)
 
     # Convert depth buffer to a numpy array
-    depth = np.array(depth_buffer)
     depth = np.reshape(depth_buffer, (height, width))
 
     # Calculate focal length
@@ -31,36 +97,29 @@ def get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=10
     # Reshape to point cloud format
     point_cloud = np.stack((x, y, z), axis=-1).reshape(-1, 3)
 
-    # Convert view matrix to numpy array and extract rotation and translation
+    # Convert view matrix to numpy array and extract rotation and translation    
+    # view_matrix = compute_view_matrix(cameraTargetPosition, distance, yaw, pitch, roll)
     view_matrix = np.array(view_matrix).reshape(4, 4).T
-    R = view_matrix[:3, :3]
+    R = view_matrix[:3, :3] 
     t = view_matrix[:3, 3]
 
-    print(f'R = {R}')
-    print(f't = {t}')
+    print(f'view_matrix = {view_matrix}')
+    # print(f'R = {R}')
+    # print(f't = {t}')
 
+    yaw = 0
     Rotation_Yaw = np.array([[np.cos(np.radians(yaw)), 0, np.sin(np.radians(yaw))], [0, 1, 0], [-np.sin(np.radians(yaw)), 0, np.cos(np.radians(yaw))]])
+    pitch = 0
     Rotation_Pitch = np.array([[1, 0, 0], [0, np.cos(np.radians(pitch)), -np.sin(np.radians(pitch))], [0, np.sin(np.radians(pitch)), np.cos(np.radians(pitch))]])
+    roll = 0
+    Rotation_Roll = np.array([[np.cos(np.radians(roll)), -np.sin(np.radians(roll)), 0], [np.sin(np.radians(roll)), np.cos(np.radians(roll)), 0], [0, 0, 1]])
 
     # Transform points to world coordinates
-    Translation = np.array([[-1, 0, 0], [0, 0, 1], [0, -1, 0]]) @ t
-    Rotation_Matrix = Rotation_Pitch @ Rotation_Yaw @ R
-    point_cloud_world = np.dot(point_cloud, Rotation_Matrix.T) + Translation
+    Translation = np.array([[-1, 0, 0], [0, 0, 1], [0, -1, 0]]) @ t 
+    Rotation_Matrix = Rotation_Yaw @ Rotation_Pitch @ Rotation_Roll @ R
+    point_cloud_world = np.dot(point_cloud,Rotation_Matrix.T) + Translation
 
-    # Transform to world coordinates
-    # point_cloud_world = (R @ point_cloud.T).T + t
-# np.array([[0.9396926,  0.0000000, 0.3420202], [0.0000000,  1.0000000,  0.0000000], [-0.3420202,  0.0000000,  0.9396926]])
-
-#     [[ 0.93969274  0.34202012 -0.        ]
-#     [ 0.          0.          1.00000012]
-#     [ 0.34202009 -0.93969262 -0.        ]]
-
-# Rotaiton Matrix [[ 1.00000009e+00 -7.68620909e-08  0.00000000e+00]
-#  [ 0.00000000e+00  0.00000000e+00  1.00000012e+00]
-#  [-1.45639098e-07 -9.99999989e-01  0.00000000e+00]]
-
-
-    return point_cloud_world
+    return point_cloud_world, Translation, Rotation_Matrix
 
 if __name__ == "__main__":
     physics_client = p.connect(p.GUI)
@@ -69,13 +128,14 @@ if __name__ == "__main__":
 
     # Load Panda robot and fix its base
     ground_id = p.loadURDF("plane.urdf")
-    robot_id = p.loadURDF("franka_panda/panda.urdf", [0, 0, 0], useFixedBase=True)
+    robot_id = p.loadURDF("franka_panda/panda.urdf", [0, 0.3, 0.6], useFixedBase=True)
+    tableUid = p.loadURDF(os.path.join(pybullet_data.getDataPath(), "table/table.urdf"), basePosition=[0, 0, 0])
 
     # Add Collision Objects
     collision_ids = [ground_id] # add the ground to the collision list
-    collision_positions = [[0.3, 0.5, 0.251], [-0.3, 0.3, 0.101], [-1, -0.15, 0.251], [-1, -0.15, 0.752], [-0.5, -1, 0.251], [0.5, -0.35, 0.201], [0.5, -0.35, 0.602]]
-    collision_orientations =  [[0, 0, 0.5], [0, 0, 0.2], [0, 0, 0],[0, 0, 1], [0, 0, 0], [0, 0, .25], [0, 0, 0.5]]
-    collision_scales = [0.5, 0.25, 0.5, 0.5, 0.5, 0.4, 0.4]
+    collision_positions = [[0.3, 0.5, 0.251]]
+    collision_orientations =  [[0, 0, 0.5]]
+    collision_scales = [0.5]
     for i in range(len(collision_scales)):
         collision_ids.append(p.loadURDF("cube.urdf",
             basePosition=collision_positions[i],  # Position of the cube
@@ -93,12 +153,15 @@ if __name__ == "__main__":
     # Display point cloud
     for step in range(time_steps):
         # Get point cloud
-        point_cloud = get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=10)
+        point_cloud_world, Translation, Rotation_Matrix = get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=10)
 
         # Downsample and display point cloud
         p.removeAllUserDebugItems()
-        downsampled_cloud = point_cloud[::5]  # Take every xth point
+        downsampled_cloud = point_cloud_world[::5]  # Take every xth point
         p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
+
+        # Draw camera coordinate frame
+        draw_camera_frame(Translation, Rotation_Matrix)
 
         p.stepSimulation()
         time.sleep(1/fps)
@@ -106,4 +169,3 @@ if __name__ == "__main__":
 
     p.disconnect()
     
-  
