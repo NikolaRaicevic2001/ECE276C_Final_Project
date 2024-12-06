@@ -1,4 +1,3 @@
-from PandaEnv import PandaEnvironment
 import numpy as np
 import pybullet as p
 import pybullet_data
@@ -9,6 +8,7 @@ import math
 import os
 
 from PointCloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
+from utils import *
 
 def environment_setup(env_num = 1):
     ''' Setup the PyBullet environment '''
@@ -110,8 +110,18 @@ def environment_setup(env_num = 1):
         collision_ids = [ground_id, r2d2_id_1, r2d2_id_2, r2d2_id_3, 
                          block_id]
 
+        # Reset Panda's position to Home Position
+        home_positions = [0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]
+        for i in range(7):
+            p.resetJointState(robot_id, i, home_positions[i]),
+    
+        # Print Robot Information
+        print_robot_info(robot_id, 7)
 
-    return collision_ids, goal_id
+        # Print End Effector State
+        print(f'End Effector State:{get_end_effector_state(robot_id, 7)}')
+
+    return physics_client, collision_ids, goal_id, robot_id
 
 def environment_update(collision_ids, dt = 1/240, velocity = 0.1, flag_01 = 1, flag_02 = 1, flag_03 = 1):
     ''' Update the environment to make R2D2s move back and forth'''
@@ -154,21 +164,24 @@ def environment_update(collision_ids, dt = 1/240, velocity = 0.1, flag_01 = 1, f
 
     return flag_01, flag_02, flag_03
 
-
-
 if __name__ == "__main__":
     # Configuring parameters
-    duration = 300
-    fps = 30
-    time_steps = int(duration * fps)
-    dt = 1.0 / fps
+    duration = 300; fps = 30
+    time_steps = int(duration * fps); dt = 1.0 / fps
+    
     point_cloud_count = 300
-    env_num = 4 
+    env_num = 1
+
     point_cloud_debug_id = None
     point_cloud_debug_id_list = []
 
     # Set the environment
-    collision_ids, goal_id = environment_setup(env_num=env_num)
+    physics_client, collision_ids, goal_id, robot_id = environment_setup(env_num=env_num)
+
+    # Create and setup environment
+    print(f"Get Position from ID: {get_position_from_id(goal_id)[0]}")
+    planner = RRTManipulatorPlanner(robot_id= robot_id)
+    planner.run(get_position_from_id(goal_id)[0])
 
     # Initializing Simulation
     p.setRealTimeSimulation(0)
@@ -213,205 +226,6 @@ if __name__ == "__main__":
         p.stepSimulation()
         time.sleep(1.0 / 240.0)
 
+    p.disconnect(physics_client)
 
-    p.disconnect()
-
-
-    # # Create and setup environment
-    # env = PandaEnvironment()
-    # env.print_robot_info()
-
-    # # Create RRT planner with Panda's joint limits
-    # joint_limits = np.array([
-    #     [-2.8973, 2.8973],    # Joint 1
-    #     [-1.7628, 1.7628],    # Joint 2
-    #     [-2.8973, 2.8973],    # Joint 3
-    #     [-3.0718, -0.0698],   # Joint 4
-    #     [-2.8973, 2.8973],    # Joint 5
-    #     [-0.0175, 3.7525],    # Joint 6
-    #     [-2.8973, 2.8973]     # Joint 7
-    # ])
-
-    # planner = RRTManipulatorPlanner(joint_limits)
-
-
-    # def check_collision(config):
-    #     """Collision checker for RRT planner"""
-    #     # Set robot to configuration
-    #     for i in range(7):
-    #         p.resetJointState(env.panda_id, i, config[i])
-    #     p.stepSimulation()
-    #     return env.check_collisions()
-
-    # # Set collision checker
-    # planner.collision_checker = check_collision
-
-    # # Custom forward kinematics using PyBullet
-    # def pybullet_fk(configuration):
-    #     """Forward kinematics using PyBullet"""
-    #     # Set robot to configuration
-    #     for i in range(7):
-    #         p.resetJointState(env.panda_id, i, configuration[i])
-    #     p.stepSimulation()
-    #     return env.get_end_effector_state()[0]  # Return position only
-
-    # # Replace planner's FK with PyBullet FK
-    # planner.forward_kinematics = pybullet_fk
-
-    # def execute_path(path):
-    #     """Execute a path from RRT planner"""
-    #     for config in path:
-    #         success = env.execute_trajectory(config, duration=1.0)
-    #         if not success:
-    #             print("Path execution failed!")
-    #             return False
-    #     return True
-
-    # def plan_and_execute(start_config, target_pos):
-    #     """Plan and execute path to target"""
-    #     print(f"Planning path to target position: {target_pos}")
-
-    #     # Plan path using RRT
-    #     path = planner.plan(start_config, np.array(target_pos), tolerance=0.05)
-
-    #     if path is not None:
-    #         print("Path found! Executing...")
-    #         if execute_path(path):
-    #             print("Path executed successfully!")
-    #             return True, path[-1]  # Return last configuration
-    #         else:
-    #             print("Path execution failed!")
-    #             return False, None
-    #     else:
-    #         print("No path found!")
-    #         return False, None
-
-    # # Main simulation loop
-    # try:
-    #     print("\nPress 'p' to start planning and execution to all target points")
-    #     print("Press 'q' to quit")
-
-    #     while True:
-    #         env.step_simulation()
-
-    #         # Handle keyboard input
-    #         keys = p.getKeyboardEvents()
-    #         for key, state in keys.items():
-    #             if state & p.KEY_WAS_TRIGGERED:
-    #                 if key == ord('p'):
-    #                     # Get target points
-    #                     targets = env.get_target_points()
-
-    #                     # Start from home position
-    #                     current_config = env.home_positions
-    #                     env.execute_trajectory(current_config)
-
-    #                     # Plan and execute to each target
-    #                     for i, target in enumerate(targets):
-    #                         print(f"\nMoving to target {i+1}/{len(targets)}")
-    #                         success, new_config = plan_and_execute(current_config, target)
-
-    #                         if success:
-    #                             current_config = new_config
-    #                             time.sleep(0.5)  # Pause between targets
-    #                         else:
-    #                             print(f"Failed to reach target {i+1}")
-    #                             break
-
-    #                     # Return to home position
-    #                     print("\nReturning to home position...")
-    #                     env.execute_trajectory(env.home_positions)
-
-    #                 elif key == ord('q'):
-    #                     raise KeyboardInterrupt
-
-    #         time.sleep(1./240.)
-
-    # except KeyboardInterrupt:
-    #     print("\nSimulation stopped by user")
-    #     env.close()
-
-
-
-    # #######################
-    # #### PROBLEM SETUP ####
-    # #######################
-
-    # # Initialize PyBullet
-    # p.connect(p.GUI)
-    # p.setAdditionalSearchPath(pybullet_data.getDataPath()) # For default URDFs
-    # p.setGravity(0, 0, -9.8)
-
-    # # Load the plane and robot arm
-    # ground_id = p.loadURDF("plane.urdf")
-    # arm_id = p.loadURDF("three_link_arm.urdf", [0, 0, 0], useFixedBase=True)
-
-    # # Add Collision Objects
-    # collision_ids = [ground_id] # add the ground to the collision list
-    # collision_positions = [[0.3, 0.5, 0.251], [-0.3, 0.3, 0.101], [-1, -0.15, 0.251], [-1, -0.15, 0.752], [-0.5, -1, 0.251], [0.5, -0.35, 0.201], [0.5, -0.35, 0.602]]
-    # collision_orientations =  [[0, 0, 0.5], [0, 0, 0.2], [0, 0, 0],[0, 0, 1], [0, 0, 0], [0, 0, .25], [0, 0, 0.5]]
-    # collision_scales = [0.5, 0.25, 0.5, 0.5, 0.5, 0.4, 0.4]
-    # for i in range(len(collision_scales)):
-    #     collision_ids.append(p.loadURDF("cube.urdf",
-    #         basePosition=collision_positions[i],  # Position of the cube
-    #         baseOrientation=p.getQuaternionFromEuler(collision_orientations[i]),  # Orientation of the cube
-    #         globalScaling=collision_scales[i]  # Scale the cube to half size
-    #     ))
-
-    # # Goal Joint Positions for the Robot
-    # goal_positions = [[-2.54, 0.15, -0.15], [-1.82,0.15,-0.15],[0.5, 0.15,-0.15], [1.7,0.2,-0.15],[-2.54, 0.15, -0.15]]
-
-    # # Joint Limits of the Robot
-    # joint_limits = [[-np.pi, np.pi], [0, np.pi], [-np.pi, np.pi]]
-
-    # # A3xN path array that will be filled with waypoints through all the goal positions
-    # path_saved = np.array([[-2.54, 0.15, -0.15]]) # Start at the first goal position
-
-    # ####################################################################################################
-    # #### YOUR CODE HERE: RUN RRT MOTION PLANNER FOR ALL goal_positions (starting at goal position 1) ###
-    # ####################################################################################################
-   
-
-
-    # ################################################################################
-    # ####  RUN THE SIMULATION AND MOVE THE ROBOT ALONG PATH_SAVED ###################
-    # ################################################################################
-
-    # # Set the initial joint positions
-    # for joint_index, joint_pos in enumerate(goal_positions[0]):
-    #     p.resetJointState(arm_id, joint_index, joint_pos)
-
-    # # Move through the waypoints
-    # for waypoint in path_saved:
-    #     # "move" to next waypoints
-    #     for joint_index, joint_pos in enumerate(waypoint):
-    #     # run velocity control until waypoint is reached
-    #         while True:
-    #             #get current joint positions
-    #             goal_positions = [p.getJointState(arm_id, i)[0] for i in range(3)]
-    #             # calculate the displacement to reach the next waypoint
-    #             displacement_to_waypoint = waypoint-goal_positions
-    #             # check if goal is reached
-    #             max_speed = 0.05
-    #             if(np.linalg.norm(displacement_to_waypoint) < max_speed):
-    #                 break
-    #             else:
-    #                 # calculate the "velocity" to reach the next waypoint
-    #                 velocities = np.min((np.linalg.norm(displacement_to_waypoint), max_speed))*displacement_to_waypoint/np.linalg.norm(displacement_to_waypoint)
-    #                 for joint_index, joint_step in enumerate(velocities):
-    #                     p.setJointMotorControl2(
-    #                         bodyIndex=arm_id,
-    #                         jointIndex=joint_index,
-    #                         controlMode=p.VELOCITY_CONTROL,
-    #                         targetVelocity=joint_step,
-    #                     )
-                        
-    #             #Take a simulation step
-    #             p.stepSimulation()            
-    #     time.sleep(1.0 / 240.0)
-
-
-    # # Disconnect from PyBullet
-    # time.sleep(100) # Remove this line -- it is just to keep the GUI open when you first run this starter code
-    # p.disconnect()
 
