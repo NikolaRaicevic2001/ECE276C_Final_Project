@@ -113,7 +113,7 @@ def environment_setup(env_num = 1):
 
     return collision_ids, goal_id
 
-def environment_update(collision_ids, dt = 1/240, velocity = 0.0, flag_01 = 1, flag_02 = 1, flag_03 = 1):
+def environment_update(collision_ids, dt = 1/240, velocity = 0.1, flag_01 = 1, flag_02 = 1, flag_03 = 1):
     ''' Update the environment to make R2D2s move back and forth'''
     # Moving R2D2 back and forth
     for i in range(3):
@@ -162,9 +162,10 @@ if __name__ == "__main__":
     fps = 30
     time_steps = int(duration * fps)
     dt = 1.0 / fps
-    point_cloud_count = 10
+    point_cloud_count = 300
     env_num = 4 
     point_cloud_debug_id = None
+    point_cloud_debug_id_list = []
 
     # Set the environment
     collision_ids, goal_id = environment_setup(env_num=env_num)
@@ -184,59 +185,36 @@ if __name__ == "__main__":
             flag_01, flag_02, flag_03 = environment_update(collision_ids, dt=dt, flag_01=flag_01, flag_02=flag_02, flag_03=flag_03)
 
         # Obtain Point Cloud
-        p.removeAllUserDebugItems()
+        # p.removeAllUserDebugItems()
         # point_cloud, wRc, wtc = get_point_cloud(camera_position=[0.0, -1.5, 2.0], camera_target=[0.0, -0.2, 0.5], img_flag=True)
         point_cloud_01, wRc_01, wtc_01 = get_point_cloud(camera_position=[-0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
         point_cloud_02, wRc_02, wtc_02 = get_point_cloud(camera_position=[0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
-        point_cloud = np.concatenate((point_cloud_01, point_cloud_02), axis=0)
+        point_cloud_03, wRc_03, wtc_03 = get_point_cloud(camera_position=[-0.7, 1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=True)
+        point_cloud = np.concatenate((point_cloud_01, point_cloud_02, point_cloud_03), axis=0)
+
+        # If a previous debug item exists, remove it
+        if point_cloud_debug_id is not None and step%5 == 0:
+            for point_cloud_debug_id in point_cloud_debug_id_list:
+                p.removeUserDebugItem(point_cloud_debug_id)
+            point_cloud_debug_id_list = []
 
         # Display Downsampled Point Cloud
         if len(point_cloud) > 0:
             if len(point_cloud) > point_cloud_count:
                 downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
                 point_cloud_debug_id = p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
+                point_cloud_debug_id_list.append(point_cloud_debug_id)
 
-        # If a previous debug item exists, remove it
-        if point_cloud_debug_id is not None:
-            p.removeUserDebugItem(point_cloud_debug_id)
-
-        if step%1 == 0:
+        if step == 0:
             draw_camera_frame(wtc_01, wRc_01)
             draw_camera_frame(wtc_02, wRc_02)
+            draw_camera_frame(wtc_03, wRc_03)
 
         p.stepSimulation()
         time.sleep(1.0 / 240.0)
 
 
     p.disconnect()
-
-
-    # Outside the main loop, initialize the debug item ID
-point_cloud_debug_id = None
-
-for step in range(time_steps):
-    # At the beginning of the loop, remove all debug items
-    p.removeAllUserDebugItems()
-
-    # ... (rest of your code)
-
-    # Display Downsampled Point Cloud
-    if len(point_cloud) > 0:
-        if len(point_cloud) > point_cloud_count:
-            downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
-        
-        # If a previous debug item exists, remove it
-        if point_cloud_debug_id is not None:
-            p.removeUserDebugItem(point_cloud_debug_id)
-        
-        # Add the new point cloud and store the debug item ID
-        point_cloud_debug_id = p.addUserDebugPoints(
-            downsampled_cloud, 
-            [[1, 0, 0]] * len(downsampled_cloud), 
-            pointSize=3
-        )
-
-    # ... (rest of your code)
 
 
     # # Create and setup environment
