@@ -8,7 +8,10 @@ from typing import Tuple, List, Optional, Dict
 import math
 import os
 
+from PointCloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
+
 def environment_setup(env_num = 1):
+    ''' Setup the PyBullet environment '''
     # PyBullet setup
     physics_client = p.connect(p.GUI)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -67,7 +70,7 @@ def environment_setup(env_num = 1):
         robot_id = p.loadURDF("franka_panda/panda.urdf", [0.0, 0.0, 0.0], useFixedBase=True)
         # Add Collision Objects
         r2d2_id_1 = p.loadURDF("r2d2.urdf", [-0.7, 0.4, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, -0.5]), globalScaling=0.5)
-        r2d2_id_2 = p.loadURDF("r2d2.urdf", [0.5, -0.3, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, -0.8]), globalScaling=0.5)
+        r2d2_id_2 = p.loadURDF("r2d2.urdf", [0.5, -0.8, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, -0.8]), globalScaling=0.5)
         r2d2_id_3 = p.loadURDF("r2d2.urdf", [0.8, 0.1, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, -0.2]), globalScaling=0.5)
         block_id = p.loadURDF("block.urdf", [0.0, -0.4, 0.5], baseOrientation=p.getQuaternionFromEuler([0, np.pi/2, 0]), globalScaling=10.0, useFixedBase=True)
         TwoJointRobot_id_1 = p.loadURDF("TwoJointRobot_wo_fixedJoints.urdf", [-1.5, 1.5, 0.6], baseOrientation=p.getQuaternionFromEuler([0, 0, 0]), globalScaling=1.5, useFixedBase=True)
@@ -83,6 +86,7 @@ def environment_setup(env_num = 1):
         cube_id_3 = p.loadURDF("cube.urdf", [1.5, -2.0, 0.1], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi/16]), globalScaling=0.5)
         cartpole_id = p.loadURDF("cartpole.urdf", [0.0, -2.8, 0.2], useFixedBase=True)
         spherical_joint_limit_id = p.loadURDF("spherical_joint_limit.urdf", [-0.3, -1.7, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi/16]), globalScaling=0.5)
+        goal_id = 0
         # Add Collision Objects
         collision_ids = [ground_id, r2d2_id_1, r2d2_id_2, r2d2_id_3, 
                          block_id, 
@@ -101,35 +105,138 @@ def environment_setup(env_num = 1):
         r2d2_id_2 = p.loadURDF("r2d2.urdf", [0.4, -0.4, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, -np.pi/2]), globalScaling=0.5)
         r2d2_id_3 = p.loadURDF("r2d2.urdf", [0.0, -0.8, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi]), globalScaling=0.5)
         block_id = p.loadURDF("block.urdf", [0.0, -0.4, 0.5], baseOrientation=p.getQuaternionFromEuler([0, np.pi/2, 0]), globalScaling=10.0, useFixedBase=True)
+        goal_id = 0
         # Add Collision Objects
         collision_ids = [ground_id, r2d2_id_1, r2d2_id_2, r2d2_id_3, 
                          block_id]
 
 
-    return collision_ids
+    return collision_ids, goal_id
 
-def environment_update():
+def environment_update(collision_ids, dt = 1/240, velocity = 0.0, flag_01 = 1, flag_02 = 1, flag_03 = 1):
+    ''' Update the environment to make R2D2s move back and forth'''
+    # Moving R2D2 back and forth
+    for i in range(3):
+        pos, ori = p.getBasePositionAndOrientation(collision_ids[i+1]) 
+
+        if i == 0:
+            if flag_01 == 1:
+                p.resetBasePositionAndOrientation(collision_ids[i+1], pos+np.array([dt*velocity,0, 0]), ori)
+            else:
+                p.resetBasePositionAndOrientation(collision_ids[i+1], pos+np.array([-dt*velocity,0,0]), ori)
+
+            if pos[0] < -1.2:
+                flag_01 = 1
+            elif pos[0] > -0.4:
+                flag_01 = 0
+
+        if i == 1:
+            if flag_02 == 1:
+                p.resetBasePositionAndOrientation(collision_ids[i+1], pos+np.array([dt*velocity,0, 0]), ori)
+            else:
+                p.resetBasePositionAndOrientation(collision_ids[i+1], pos+np.array([-dt*velocity,0, 0]), ori)
+
+            if pos[0] < 0.4:
+                flag_02 = 1
+            elif pos[0] > 1.2:
+                flag_02 = 0
+
+        if i == 2:
+            if flag_03 == 1:
+                p.resetBasePositionAndOrientation(collision_ids[i+1], pos+np.array([0,dt*velocity, 0]), ori)
+            else:
+                p.resetBasePositionAndOrientation(collision_ids[i+1], pos+np.array([0,-dt*velocity, 0]), ori)
+
+            if pos[1] < -1.6:
+                flag_03 = 1
+            elif pos[1] > -0.8:
+                flag_03 = 0
+
+    return flag_01, flag_02, flag_03
 
 
-
-
-        for i, (sphere_id, point) in enumerate(zip(self.sphere_ids, points_np)):
-            # Color red only for the point with smallest SDF value, blue for others
-            color = [1, 0, 0, 1] if i == min_sdf_idx else [0, 0, 1, 1]
-            p.changeVisualShape(sphere_id, -1, rgbaColor=color)
-            
-            # Update position (orientation doesn't matter for spheres)
-            p.resetBasePositionAndOrientation(sphere_id, point, [0, 0, 0, 1])
 
 if __name__ == "__main__":
-    # Set the environment
-    collision_ids = environment_setup(env_num=4)
+    # Configuring parameters
+    duration = 300
+    fps = 30
+    time_steps = int(duration * fps)
+    dt = 1.0 / fps
+    point_cloud_count = 10
+    env_num = 4 
+    point_cloud_debug_id = None
 
-    while True:
+    # Set the environment
+    collision_ids, goal_id = environment_setup(env_num=env_num)
+
+    # Initializing Simulation
+    p.setRealTimeSimulation(0)
+
+    for step in range(time_steps):
+        # Setting Flags for the first time
+        if step == 0:
+            flag_01 = 1
+            flag_02 = 1
+            flag_03 = 1
+
+        # Update the environment
+        if env_num == 4:
+            flag_01, flag_02, flag_03 = environment_update(collision_ids, dt=dt, flag_01=flag_01, flag_02=flag_02, flag_03=flag_03)
+
+        # Obtain Point Cloud
+        p.removeAllUserDebugItems()
+        # point_cloud, wRc, wtc = get_point_cloud(camera_position=[0.0, -1.5, 2.0], camera_target=[0.0, -0.2, 0.5], img_flag=True)
+        point_cloud_01, wRc_01, wtc_01 = get_point_cloud(camera_position=[-0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
+        point_cloud_02, wRc_02, wtc_02 = get_point_cloud(camera_position=[0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
+        point_cloud = np.concatenate((point_cloud_01, point_cloud_02), axis=0)
+
+        # Display Downsampled Point Cloud
+        if len(point_cloud) > 0:
+            if len(point_cloud) > point_cloud_count:
+                downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
+                point_cloud_debug_id = p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
+
+        # If a previous debug item exists, remove it
+        if point_cloud_debug_id is not None:
+            p.removeUserDebugItem(point_cloud_debug_id)
+
+        if step%1 == 0:
+            draw_camera_frame(wtc_01, wRc_01)
+            draw_camera_frame(wtc_02, wRc_02)
+
         p.stepSimulation()
         time.sleep(1.0 / 240.0)
 
     p.disconnect()
+
+
+    # Outside the main loop, initialize the debug item ID
+point_cloud_debug_id = None
+
+for step in range(time_steps):
+    # At the beginning of the loop, remove all debug items
+    p.removeAllUserDebugItems()
+
+    # ... (rest of your code)
+
+    # Display Downsampled Point Cloud
+    if len(point_cloud) > 0:
+        if len(point_cloud) > point_cloud_count:
+            downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
+        
+        # If a previous debug item exists, remove it
+        if point_cloud_debug_id is not None:
+            p.removeUserDebugItem(point_cloud_debug_id)
+        
+        # Add the new point cloud and store the debug item ID
+        point_cloud_debug_id = p.addUserDebugPoints(
+            downsampled_cloud, 
+            [[1, 0, 0]] * len(downsampled_cloud), 
+            pointSize=3
+        )
+
+    # ... (rest of your code)
+
 
     # # Create and setup environment
     # env = PandaEnvironment()

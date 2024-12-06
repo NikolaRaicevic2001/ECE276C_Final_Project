@@ -45,16 +45,17 @@ def world_to_camera(point_world, view_matrix):
     point_camera = R @ point_world + t
     return point_camera
 
-def get_point_cloud(width=640, height=480):
-    # Camera setup
-    fov = 75
-    aspect = width / height
-    near = 0.01
-    far = 10
+def get_point_cloud(width=640, height=480, fov=75, near=0.01, far=10, camera_position=[0.0, -1.2, 1.8], camera_target=[0.0, 1.0, 0.0], up_vector=[0.0, 0.0, 1.0], img_flag = False):
+    """ Get point cloud from camera image """
+    # Disable GUI rendering
+    if not img_flag:
+        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_SEGMENTATION_MARK_PREVIEW, 0)
     
-    camera_position = [0.0, -1.2, 1.8]
-    camera_target = [0.0, 1.0, 0.0]
-    up_vector = [0.0, 0.0, 1.0]
+    # Camera setup
+    aspect = width / height
     
     view_matrix = np.array(p.computeViewMatrix(camera_position, camera_target, up_vector)).reshape(4,4).T
     proj_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
