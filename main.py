@@ -110,7 +110,6 @@ def environment_setup(env_num = 1):
 
 def environment_update():
 
-
         for i, (sphere_id, point) in enumerate(zip(self.sphere_ids, points_np)):
             # Color red only for the point with smallest SDF value, blue for others
             color = [1, 0, 0, 1] if i == min_sdf_idx else [0, 0, 1, 1]
