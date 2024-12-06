@@ -1,272 +1,252 @@
+import pybullet as p
+import pybullet_data
+import time
 import numpy as np
-from typing import List, Tuple, Optional
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+import random
 
-class Node:
-    def __init__(self, configuration: np.ndarray):
-        self.configuration = configuration  # 7-DOF joint angles
-        self.parent = None
-        self.path_from_parent = []
 
 class RRTManipulatorPlanner:
-    def __init__(self, joint_limits: np.ndarray, collision_checker=None):
-        """
-        Initialize RRT planner for 7-DOF manipulator
+    def __init__(self):
+        # Initialize PyBullet
+        self.client_id = p.connect(p.GUI)
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        p.setGravity(0, 0, -9.8)
 
-        Args:
-            joint_limits: Array of shape (7, 2) containing min/max limits for each joint
-            collision_checker: Optional function to check for collisions
-        """
-        self.joint_limits = joint_limits
-        self.collision_checker = collision_checker
-        self.nodes = []
-        self.step_size = 0.2  # Increased step size
-        self.max_iterations = 10000
+        # Load environment and robot
+        plane_id = p.loadURDF("plane.urdf")
+        self.robot_id = p.loadURDF("franka_panda/panda.urdf", [0, 0, 0], useFixedBase=True)
 
-    def forward_kinematics(self, configuration: np.ndarray) -> np.ndarray:
-        """
-        Improved forward kinematics calculation.
-        """
-        # DH parameters (example values - adjust for your robot)
-        d = [0.333, 0, 0.316, 0, 0.384, 0, 0]  # Link offsets
-        a = [0, 0, 0, 0.0825, -0.0825, 0, 0.088]  # Link lengths
-        alpha = [0, -np.pi/2, np.pi/2, np.pi/2, -np.pi/2, np.pi/2, np.pi/2]  # Link twists
+        # Gripper offset to account for gripper length
+        # This value should be adjusted based on the actual gripper length
+        self.gripper_offset = 0.1  # 10 cm offset from end-effector
 
-        # Initialize transformation matrix
-        T = np.eye(4)
+    def forward_kinematics(self, joint_angles):
+        """Compute end-effector position for given joint angles"""
+        for i, angle in enumerate(joint_angles):
+            p.resetJointState(self.robot_id, i, angle)
 
-        # Compute forward kinematics
+        # Get the end-effector link state
+        end_effector_state = p.getLinkState(self.robot_id, 6)
+        end_effector_pos = end_effector_state[0]
+        end_effector_orient = end_effector_state[1]
+
+        # Calculate gripper tip position considering orientation
+        rot_matrix = p.getMatrixFromQuaternion(end_effector_orient)
+        rot_matrix = np.array(rot_matrix).reshape(3, 3)
+
+        # Apply offset along the z-axis of the end-effector
+        gripper_tip = end_effector_pos + rot_matrix[:, 2] * self.gripper_offset
+
+        return gripper_tip
+
+    def inverse_kinematics(self, target_position, target_orientation=None):
+        """Compute joint angles for a target gripper position"""
+        # If no specific orientation is provided, use a default downward orientation
+        if target_orientation is None:
+            # Quaternion for pointing straight down
+            target_orientation = p.getQuaternionFromEuler([np.pi, 0, 0])
+
+        # Adjust target position to account for gripper offset
+        # We need to move the target point back along the z-axis of the gripper
+        link_state = p.getLinkState(self.robot_id, 6)
+        current_orient = link_state[1]
+        current_rot_matrix = np.array(p.getMatrixFromQuaternion(current_orient)).reshape(3, 3)
+
+        # Adjust target position by subtracting the offset along the current z-axis
+        adjusted_target = np.array(target_position) - current_rot_matrix[:, 2] * self.gripper_offset
+
+        # Use PyBullet's inverse kinematics solver
+        joint_angles = p.calculateInverseKinematics(
+            self.robot_id,
+            6,  # End-effector link index
+            adjusted_target,
+            targetOrientation=target_orientation
+        )
+
+        return joint_angles
+
+    def is_state_valid(self, joint_angles):
+        """Check if the given joint configuration is collision-free"""
+        for i, angle in enumerate(joint_angles):
+            p.resetJointState(self.robot_id, i, angle)
+        collisions = p.getContactPoints()
+        return len(collisions) == 0
+
+    def random_configuration(self):
+        """Generate a random valid joint configuration"""
+        joint_angles = []
         for i in range(7):
-            theta = configuration[i]
+            joint_info = p.getJointInfo(self.robot_id, i)
+            joint_angles.append(random.uniform(joint_info[8], joint_info[9]))
+        return joint_angles
 
-            # DH transformation matrix
-            ct = np.cos(theta)
-            st = np.sin(theta)
-            ca = np.cos(alpha[i])
-            sa = np.sin(alpha[i])
+    def distance(self, config1, config2):
+        """Compute distance between two joint configurations"""
+        return np.linalg.norm(np.array(config1) - np.array(config2))
 
-            T_i = np.array([
-                [ct, -st*ca, st*sa, a[i]*ct],
-                [st, ct*ca, -ct*sa, a[i]*st],
-                [0, sa, ca, d[i]],
-                [0, 0, 0, 1]
-            ])
+    def plan_rrt_star(self, start_angles, goal_angles, max_iterations=1000, step_size=0.1, goal_bias=0.1):
+        """RRT* path planning algorithm"""
+        nodes = [start_angles]
+        edges = {}
+        costs = {tuple(start_angles): 0}
 
-            T = T @ T_i
-
-        return T[:3, 3]  # Return position component
-
-    def random_configuration(self) -> np.ndarray:
-        """Generate random joint configuration within limits"""
-        return np.random.uniform(self.joint_limits[:, 0], self.joint_limits[:, 1])
-
-    def sample_biased_configuration(self, target_position: np.ndarray) -> np.ndarray:
-        """
-        Sample configuration with bias towards configurations that might reach the target
-        """
-        # Generate multiple random configurations and select the one closest to target
-        best_dist = float('inf')
-        best_config = None
-
-        for _ in range(10):  # Try 10 random configurations
-            config = self.random_configuration()
-            ee_pos = self.forward_kinematics(config)
-            dist = np.linalg.norm(ee_pos - target_position)
-
-            if dist < best_dist:
-                best_dist = dist
-                best_config = config
-
-        return best_config
-
-    def nearest_neighbor(self, target_config: np.ndarray) -> Node:
-        """Find nearest node in tree to target configuration"""
-        min_dist = float('inf')
-        nearest_node = None
-
-        for node in self.nodes:
-            # Use weighted joint distance for better 7-DOF matching
-            weights = np.array([1.0, 1.0, 1.0, 0.8, 0.8, 0.5, 0.3])  # Prioritize base joints
-            dist = np.linalg.norm(weights * (node.configuration - target_config))
-            if dist < min_dist:
-                min_dist = dist
-                nearest_node = node
-
-        return nearest_node
-
-
-    def extend(self, from_config: np.ndarray, to_config: np.ndarray) -> Tuple[np.ndarray, List[np.ndarray]]:
-        """
-        Extend tree from one configuration toward another
-        Returns new configuration and discretized path
-        """
-        diff = to_config - from_config
-        dist = np.linalg.norm(diff)
-
-        if dist < self.step_size:
-            return to_config, [to_config]
-
-        # Take a step in the direction of the target
-        direction = diff / dist
-        new_config = from_config + direction * self.step_size
-
-        # Ensure within joint limits
-        new_config = np.clip(new_config, self.joint_limits[:, 0], self.joint_limits[:, 1])
-
-        # Create discretized path
-        num_steps = int(np.ceil(dist / self.step_size))
-        path = []
-        for i in range(num_steps):
-            t = min(1.0, (i + 1) * self.step_size / dist)
-            path_config = from_config + t * diff
-            path_config = np.clip(path_config, self.joint_limits[:, 0], self.joint_limits[:, 1])
-            path.append(path_config)
-
-        return new_config, path
-
-    def is_valid_path(self, path: List[np.ndarray]) -> bool:
-        """Check if path is collision-free"""
-        if self.collision_checker is None:
-            return True
-
-        return all(not self.collision_checker(config) for config in path)
-
-    def plan(self, start_config: np.ndarray, target_position: np.ndarray,
-            tolerance: float = 0.1) -> Optional[List[np.ndarray]]:  # Increased tolerance
-        """
-        Plan path from start configuration to reach target end-effector position
-        """
-        # Initialize tree with start configuration
-        start_node = Node(start_config)
-        self.nodes = [start_node]
-
-        best_distance = np.linalg.norm(self.forward_kinematics(start_config) - target_position)
-        best_node = None
-
-        for i in range(self.max_iterations):
-            # Adaptive sampling strategy
-            if np.random.random() < 0.3:  # Increased bias toward target
-                random_config = self.sample_biased_configuration(target_position)
+        for _ in range(max_iterations):
+            # Goal bias for directed exploration
+            if random.random() < goal_bias:
+                rand_config = goal_angles[:7]
             else:
-                random_config = self.random_configuration()
+                rand_config = self.random_configuration()
 
-            # Find nearest node in tree
-            nearest_node = self.nearest_neighbor(random_config)
+            # Find nearest node
+            nearest_node = min(nodes, key=lambda n: self.distance(n, rand_config))
 
-            # Extend tree toward random configuration
-            new_config, path = self.extend(nearest_node.configuration, random_config)
+            # Steer towards the random configuration
+            direction = np.array(rand_config) - np.array(nearest_node)
+            direction_norm = np.linalg.norm(direction)
 
-            # Check if path is valid
-            if not self.is_valid_path(path):
-                continue
+            # Limit step size
+            if direction_norm > step_size:
+                direction = direction / direction_norm * step_size
 
-            # Create and add new node
-            new_node = Node(new_config)
-            new_node.parent = nearest_node
-            new_node.path_from_parent = path
-            self.nodes.append(new_node)
+            new_node = (np.array(nearest_node) + direction).tolist()
 
-            # Check distance to target
-            ee_pos = self.forward_kinematics(new_config)
-            distance = np.linalg.norm(ee_pos - target_position)
+            # Check collision and validity
+            if self.is_state_valid(new_node):
+                nodes.append(new_node)
 
-            # Update best distance
-            if distance < best_distance:
-                best_distance = distance
-                best_node = new_node
-                print(f"New best distance: {distance:.3f}")
+                # Find near nodes for potential rewiring
+                near_nodes = [n for n in nodes if self.distance(n, new_node) < step_size * 2]
 
-            # Check if we've reached target
-            if distance < tolerance:
-                return self.extract_path(new_node)
+                # Choose parent with minimum cost
+                best_parent = nearest_node
+                best_cost = costs.get(tuple(nearest_node), float('inf')) + self.distance(nearest_node, new_node)
 
-            # Early stopping if we're not making progress
-            if i % 1000 == 0 and i > 0:
-                print(f"Iteration {i}, Best distance: {best_distance:.3f}")
+                for near_node in near_nodes:
+                    tentative_cost = costs.get(tuple(near_node), float('inf')) + self.distance(near_node, new_node)
+                    if tentative_cost < best_cost:
+                        best_parent = near_node
+                        best_cost = tentative_cost
 
-        # If we didn't reach the exact target, return the best path we found
-        if best_node is not None and best_distance < tolerance * 2:
-            print(f"Returning best found path with distance: {best_distance:.3f}")
-            return self.extract_path(best_node)
+                # Update edges and costs
+                edges[tuple(new_node)] = best_parent
+                costs[tuple(new_node)] = best_cost
 
-        return None
+                # Rewire nearby nodes
+                for near_node in near_nodes:
+                    current_near_cost = costs.get(tuple(near_node), float('inf'))
+                    potential_new_cost = best_cost + self.distance(new_node, near_node)
 
-    def extract_path(self, node: Node) -> List[np.ndarray]:
-        """Extract path from start to given node"""
+                    if potential_new_cost < current_near_cost:
+                        edges[tuple(near_node)] = new_node
+                        costs[tuple(near_node)] = potential_new_cost
+
+                # Check if goal is reached
+                if self.distance(new_node, goal_angles[:7]) < step_size:
+                    nodes.append(goal_angles[:7])
+                    edges[tuple(goal_angles[:7])] = new_node
+                    costs[tuple(goal_angles[:7])] = best_cost
+                    break
+
+        # Extract path
         path = []
-        current = node
+        current = goal_angles[:7]
+        while tuple(current) in edges:
+            path.append(current)
+            current = edges[tuple(current)]
+        path.append(start_angles)
+        path.reverse()
 
-        while current.parent is not None:
-            path = current.path_from_parent + path
-            current = current.parent
+        return path
 
-        return [current.configuration] + path
+    def execute_path(self, path):
+        """Execute a planned path in simulation"""
+        for joint_angles in path:
+            for i, angle in enumerate(joint_angles):
+                p.setJointMotorControl2(self.robot_id, i, p.POSITION_CONTROL, angle)
+            p.stepSimulation()
+            time.sleep(0.1)  # Visualization delay
 
-    def visualize_path(self, path: List[np.ndarray]):
-        """Visualize the path in task space"""
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
+    def plan_and_execute_trajectory(self, goal_positions):
+        """Plan and execute a trajectory through multiple goal positions"""
+        # Start from initial zero configuration
+        current_angles = [0, 0, 0, 0, 0, 0, 0]
+        total_path = []
+        verified_goal_angles = []
 
-        # Plot path
-        ee_positions = [self.forward_kinematics(config) for config in path]
-        ee_positions = np.array(ee_positions)
+        # Downward orientation for gripper (pointing straight down)
+        goal_orientation = p.getQuaternionFromEuler([np.pi, 0, 0])
 
-        # Plot robot workspace (approximate)
-        u = np.linspace(0, 2 * np.pi, 100)
-        v = np.linspace(0, np.pi, 100)
-        radius = 1.0  # Approximate robot reach
-        x = radius * np.outer(np.cos(u), np.sin(v))
-        y = radius * np.outer(np.sin(u), np.sin(v))
-        z = radius * np.outer(np.ones(np.size(u)), np.cos(v))
-        ax.plot_surface(x, y, z, alpha=0.1, color='gray')
+        # First, plan paths and verify tip positions for all goal positions
+        for goal_position in goal_positions:
+            # Calculate goal joint angles using IK
+            goal_angles = self.inverse_kinematics(goal_position, goal_orientation)
+            print(f"Moving to position: {goal_position}")
+            print("Goal Joint Angles:", goal_angles[:7])
 
-        # Plot path
-        ax.plot(ee_positions[:, 0], ee_positions[:, 1], ee_positions[:, 2], 'b-', linewidth=2, label='Path')
-        ax.scatter(ee_positions[0, 0], ee_positions[0, 1], ee_positions[0, 2],
-                  c='g', marker='o', s=100, label='Start')
-        ax.scatter(ee_positions[-1, 0], ee_positions[-1, 1], ee_positions[-1, 2],
-                  c='r', marker='o', s=100, label='End')
+            # Verify gripper tip position
+            for i, angle in enumerate(goal_angles[:7]):
+                p.resetJointState(self.robot_id, i, angle)
 
-        # Plot intermediate points
-        ax.scatter(ee_positions[1:-1, 0], ee_positions[1:-1, 1], ee_positions[1:-1, 2],
-                  c='blue', marker='.', s=30, alpha=0.5)
+            gripper_pos = self.forward_kinematics(goal_angles[:7])
+            print("Actual Gripper Position:", gripper_pos)
+            print("Target Position:", goal_position)
 
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.legend()
+            distance_to_target = np.linalg.norm(np.array(gripper_pos) - np.array(goal_position))
+            print("Distance to Target:", distance_to_target)
 
-        # Set equal aspect ratio
-        ax.set_box_aspect([1,1,1])
+            # Plan path using RRT*
+            path = self.plan_rrt_star(current_angles, goal_angles)
+            print("Planned Path Length:", len(path))
 
-        plt.show()
+            total_path.append(path)
+            verified_goal_angles.append(goal_angles[:7])
 
-# Example usage:
+
+            if path:
+                self.execute_path(path)
+                time.sleep(1)
+
+            # Update current angles to the last configuration of the path
+            current_angles = path[-1]
+
+        # Now execute the entire planned trajectory
+        # for path in total_path:
+        #     if path:
+        #         self.execute_path(path)
+        #         time.sleep(1)
+
+
+
+
+    def run(self, goal_positions):
+        """Main execution method"""
+        try:
+            # Plan and execute trajectory
+            self.plan_and_execute_trajectory(goal_positions)
+
+            # Keep simulation running
+            while True:
+                p.stepSimulation()
+                time.sleep(0.01)
+        except KeyboardInterrupt:
+            self.cleanup()
+
+    def cleanup(self):
+        """Disconnect from PyBullet simulation"""
+        p.disconnect()
+
+def main():
+    # Define goal positions
+    goal_positions = [
+        [0.5, -0.0, 0.5],
+        [-0.5, 0.0, 0.5],
+        [0.5, 0.5, 0.5],
+        [0.5, -0.5, 0.5]
+    ]
+
+    # Create planner and run
+    planner = RRTManipulatorPlanner()
+    planner.run(goal_positions)
+
 if __name__ == "__main__":
-    # Define joint limits (in radians)
-    joint_limits = np.array([
-        [-np.pi, np.pi],      # Joint 1
-        [-np.pi/2, np.pi/2],  # Joint 2
-        [-np.pi, np.pi],      # Joint 3
-        [-np.pi, np.pi],      # Joint 4
-        [-np.pi, np.pi],      # Joint 5
-        [-np.pi, np.pi],      # Joint 6
-        [-np.pi, np.pi]       # Joint 7
-    ])
-
-    # Create planner
-    planner = RRTManipulatorPlanner(joint_limits)
-
-    # Define start configuration and target position
-    start_config = np.zeros(7)  # All joints at zero position
-    target_position = np.array([0.5, 0.3, 0.7])  # Target end-effector position
-
-    # Plan path
-    path = planner.plan(start_config, target_position)
-
-    if path is not None:
-        print("Path found!")
-        planner.visualize_path(path)
-    else:
-        print("No path found.")
+    main()
