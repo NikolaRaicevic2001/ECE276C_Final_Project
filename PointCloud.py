@@ -1,125 +1,118 @@
 import pybullet as p
 import pybullet_data
-
-import matplotlib.pyplot as plt
 import numpy as np
 import time
 import os
 
-def draw_camera_frame(Translation, Rotation_Matrix, size=0.2):
+def draw_camera_frame(t, R, size=0.2):
     ''' Draw the camera frame in the PyBullet simulation '''
-    # Extract camera position and orientation from view matrix
-    cam_pos = Translation
-    cam_rot = Rotation_Matrix
-    
     # Define coordinate axes
-    axes = np.array([[size, 0, 0], [0, size, 0], [0, 0, size]])
+    axes = np.array([[size, 0, 0], [0, 0, -size], [0, size, 0]])
     
     # Transform axes to camera frame
-    transformed_axes = cam_rot.dot(axes.T).T + cam_pos
-    
+    transformed_axes = (R @ axes) + t
+
     # Draw coordinate axes
     colors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # Red, Green, Blue for X, Y, Z
     labels = ['X', 'Y', 'Z']
     for i in range(3):
-        p.addUserDebugLine(cam_pos, transformed_axes[i], colors[i], lineWidth=2)
+        p.addUserDebugLine(t, transformed_axes[i], colors[i], lineWidth=2)
         p.addUserDebugText(labels[i], transformed_axes[i], colors[i], textSize=1.5)
     
-    # Add "Camera" label at the camera position
-    p.addUserDebugText("Camera", cam_pos, [1, 1, 1], textSize=1.5)
+    p.addUserDebugText("Camera", t, [1, 1, 1], textSize=1.5)
 
-def compute_view_matrix(camera_target_position, distance, yaw, pitch, roll):
+def camera_to_world(point_camera, view_matrix):
     """
-    Compute the view matrix for a camera.
-    
-    Args:
-    camera_target_position (list): The target position [x, y, z] the camera is looking at.
-    distance (float): The distance from the camera to the target.
-    yaw (float): Rotation around the y-axis in degrees (in camera frame, world z-axis).
-    pitch (float): Rotation around the z-axis in degrees (in camera frame, world -x-axis).
-    roll (float): Rotation around the x-axis in degrees (in camera frame, world x-axis).
-    
-    Returns:
-    numpy.ndarray: The 4x4 view matrix.
+    Transform point from camera frame to world frame
+    point_camera: [x, y, z] in camera frame
+    view_matrix: 4x4 view matrix (world to camera)
     """
-    # Convert angles to radians
-    y = np.radians(yaw)
-    p = np.radians(pitch)
-    r = np.radians(roll)
+    # Extract rotation (upper 3x3) and translation from view matrix
+    R = view_matrix[:3, :3]  # 3x3 rotation
+    t = view_matrix[:3, 3]   # translation
     
-    # Compute view matrix elements (rotation part)
-    view_matrix = np.array([
-        [np.cos(y)*np.cos(p), np.cos(y)*np.sin(p)*np.sin(r) - np.sin(y)*np.cos(r), np.cos(y)*np.sin(p)*np.cos(r) + np.sin(y)*np.sin(r), 0],
-        [np.sin(y)*np.cos(p), np.sin(y)*np.sin(p)*np.sin(r) + np.cos(y)*np.cos(r), np.sin(y)*np.sin(p)*np.cos(r) - np.cos(y)*np.sin(r), 0],
-        [-np.sin(p), np.cos(p)*np.sin(r), np.cos(p)*np.cos(r), 0],
-        [0, 0, 0, 1]
-    ])
-    
-    # Compute camera position
-    camera_offset = np.array([
-        np.sin(y) * distance,
-        -np.sin(p) * np.cos(y) * distance,
-        -np.cos(p) * np.cos(y) * distance
-    ])
-    
-    camera_pos = np.array(camera_target_position) - camera_offset
-    
-    # Add translation to view matrix
-    view_matrix[0, 3] = -np.dot(view_matrix[0, :3], camera_pos)
-    view_matrix[1, 3] = -np.dot(view_matrix[1, :3], camera_pos)
-    view_matrix[2, 3] = -np.dot(view_matrix[2, :3], camera_pos)
-    
-    return view_matrix
+    # To go from camera to world:
+    # 1. Inverse rotation: R.T (since R is orthogonal)
+    # 2. Inverse translation: -R.T @ t
+    point_world = (R.T @ point_camera.T).T - R.T @ t
 
-def get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=1000, cameraTargetPosition = [0, 0, 0.9],distance=1.3, yaw=0, pitch=0, roll=0):
-    ''' Get the point cloud from the camera view '''
-    # Adjust camera position to better view the Panda arm
-    view_matrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=cameraTargetPosition, distance=distance, yaw=yaw, pitch=pitch, roll=roll, upAxisIndex=2)
-    projection_matrix = p.computeProjectionMatrixFOV(fov=fov, aspect=width/height, nearVal=near_plane, farVal=far_plane)
+    return point_world
 
-    # Get camera image
-    _, _, rgb_image, depth_buffer, _ = p.getCameraImage(width, height, viewMatrix=view_matrix, projectionMatrix=projection_matrix, renderer=p.ER_BULLET_HARDWARE_OPENGL)
-
-    # Convert depth buffer to a numpy array
-    depth = np.reshape(depth_buffer, (height, width))
-
-    # Calculate focal length
-    focal_length = 0.5 * height / (np.tan(0.5*np.pi/180*fov))
-
-    # Create a grid of coordinates
-    x, y = np.meshgrid(np.arange(width), np.arange(height))
-
-    # Calculate 3D coordinates
-    z = far_plane * near_plane / (far_plane -(far_plane - near_plane) * depth)
-    x = (x - width/2) * z / focal_length
-    y = (y - height/2) * z / focal_length
-
-    # Reshape to point cloud format
-    point_cloud = np.stack((x, y, z), axis=-1).reshape(-1, 3)
-
-    # Convert view matrix to numpy array and extract rotation and translation    
-    # view_matrix = compute_view_matrix(cameraTargetPosition, distance, yaw, pitch, roll)
-    view_matrix = np.array(view_matrix).reshape(4, 4).T
-    R = view_matrix[:3, :3] 
+def world_to_camera(point_world, view_matrix):
+    """Transform point from world to camera frame"""
+    R = view_matrix[:3, :3]
     t = view_matrix[:3, 3]
+    point_camera = R @ point_world + t
+    return point_camera
 
-    print(f'view_matrix = {view_matrix}')
-    # print(f'R = {R}')
-    # print(f't = {t}')
+def get_point_cloud(width=640, height=480):
+    # Camera setup
+    fov = 75
+    aspect = width / height
+    near = 0.01
+    far = 10
+    
+    camera_position = [0.0, -1.2, 1.8]
+    camera_target = [0.0, 1.0, 0.0]
+    up_vector = [0.0, 0.0, 1.0]
+    
+    view_matrix = np.array(p.computeViewMatrix(camera_position, camera_target, up_vector)).reshape(4,4).T
+    proj_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
 
-    yaw = 0
-    Rotation_Yaw = np.array([[np.cos(np.radians(yaw)), 0, np.sin(np.radians(yaw))], [0, 1, 0], [-np.sin(np.radians(yaw)), 0, np.cos(np.radians(yaw))]])
-    pitch = 0
-    Rotation_Pitch = np.array([[1, 0, 0], [0, np.cos(np.radians(pitch)), -np.sin(np.radians(pitch))], [0, np.sin(np.radians(pitch)), np.cos(np.radians(pitch))]])
-    roll = 0
-    Rotation_Roll = np.array([[np.cos(np.radians(roll)), -np.sin(np.radians(roll)), 0], [np.sin(np.radians(roll)), np.cos(np.radians(roll)), 0], [0, 0, 1]])
+    # Get camera image with segmentation mask
+    _, _, _, depth_buffer, seg_mask = p.getCameraImage(
+        width, height,
+        viewMatrix=view_matrix.T.ravel(),
+        projectionMatrix=proj_matrix,
+        renderer=p.ER_BULLET_HARDWARE_OPENGL,
+        flags=p.ER_SEGMENTATION_MASK_OBJECT_AND_LINKINDEX,
+        shadow=0
+    )
+    
+    depth_buffer = np.array(depth_buffer).reshape(height, width)
+    seg_mask = np.array(seg_mask).reshape(height, width)
 
-    # Transform points to world coordinates
-    Translation = np.array([[-1, 0, 0], [0, 0, 1], [0, -1, 0]]) @ t 
-    Rotation_Matrix = Rotation_Yaw @ Rotation_Pitch @ Rotation_Roll @ R
-    point_cloud_world = np.dot(point_cloud,Rotation_Matrix.T) + Translation
+    # Actual point cloud filtering code
+    depth_mask = depth_buffer < 1.0  # True for valid depth points (not at infinity)
 
-    return point_cloud_world, Translation, Rotation_Matrix
+    # Extract object IDs from segmentation mask
+    object_ids = seg_mask & ((1 << 24) - 1)  # Get lower 24 bits containing object ID
+
+    # Create mask that excluds ground (ID 0) and robot base (ID 1)
+    object_mask = ~np.isin(object_ids, [0, 1])
+    
+    # Combine all masks
+    mask = depth_mask & object_mask 
+
+    if not np.any(mask):
+        print("No valid depth points found!")
+        return np.array([])
+
+    # Convert normalized depth to metric depth
+    z_eye = near * far / (far - depth_buffer * (far - near))
+    
+    # Generate pixel coordinates
+    x_ndc, y_ndc = np.meshgrid(np.linspace(-aspect, aspect, width), np.linspace(1, -1, height))
+    
+    # Convert to camera space
+    fov_factor = np.tan(np.radians(fov/2))
+    x_cam = x_ndc * z_eye * fov_factor
+    y_cam = y_ndc * z_eye * fov_factor
+    z_cam = -z_eye
+
+    # Stack and reshape
+    points_cam = np.stack([x_cam, y_cam, z_cam], axis=-1)
+    points_cam = points_cam.reshape(-1, 3)
+    
+    # Apply mask
+    points_cam = points_cam[mask.reshape(-1)]
+    
+    # Transform to world space
+    R = view_matrix[:3, :3].T
+    t = view_matrix[:3, 3]
+    points_world = camera_to_world(points_cam, view_matrix)
+
+    return points_world, R, -R @ t
 
 if __name__ == "__main__":
     physics_client = p.connect(p.GUI)
@@ -132,15 +125,15 @@ if __name__ == "__main__":
     tableUid = p.loadURDF(os.path.join(pybullet_data.getDataPath(), "table/table.urdf"), basePosition=[0, 0, 0])
 
     # Add Collision Objects
-    collision_ids = [ground_id] # add the ground to the collision list
+    collision_ids = [ground_id] 
     collision_positions = [[0.5, -0.3, 0.72],[-0.3, -0.3, 0.72]]
     collision_orientations =  [[0, 0, 0.5],[0, 0, 0.5]]
     collision_scales = [0.2, 0.2]
     for i in range(len(collision_scales)):
         collision_ids.append(p.loadURDF("cube.urdf",
-            basePosition=collision_positions[i],  # Position of the cube
-            baseOrientation=p.getQuaternionFromEuler(collision_orientations[i]),  # Orientation of the cube
-            globalScaling=collision_scales[i]  # Scale the cube to half size
+            basePosition=collision_positions[i],  
+            baseOrientation=p.getQuaternionFromEuler(collision_orientations[i]),  
+            globalScaling=collision_scales[i] 
         ))
 
     # Initializing Simulation
@@ -149,23 +142,29 @@ if __name__ == "__main__":
     fps = 30
     time_steps = int(duration * fps)
     dt = 1.0 / fps
+    point_cloud_count = 1000
 
     # Display point cloud
     for step in range(time_steps):
-        # Get point cloud
-        point_cloud_world, Translation, Rotation_Matrix = get_point_cloud(width=640, height=480, fov=60, near_plane=0.01, far_plane=10)
+        # Step simulation to let objects settle
+        p.stepSimulation()
 
-        # Downsample and display point cloud
+        # Obtain Point Cloud
+        point_cloud, wRc, wtc = get_point_cloud()
         p.removeAllUserDebugItems()
-        downsampled_cloud = point_cloud_world[::5]  # Take every xth point
+
+        # Display Downsampled Point Cloud
+        if len(point_cloud) > 0:
+            if len(point_cloud) > point_cloud_count:
+                downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
         p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
 
-        # Draw camera coordinate frame
-        draw_camera_frame(Translation, Rotation_Matrix)
+        # Draw Camera Coordinate Frame
+        if step%10 == 0:
+            draw_camera_frame(wtc, wRc)
 
-        p.stepSimulation()
         time.sleep(1/fps)
-  
 
+    # Disconnect PyBullet
     p.disconnect()
-    
+
