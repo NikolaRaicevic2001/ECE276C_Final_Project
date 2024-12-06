@@ -4,17 +4,10 @@ import time
 import numpy as np
 import random
 
-
 class RRTManipulatorPlanner:
-    def __init__(self):
-        # Initialize PyBullet
-        self.client_id = p.connect(p.GUI)
-        p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        p.setGravity(0, 0, -9.8)
-
+    def __init__(self, robot_id=None):
         # Load environment and robot
-        plane_id = p.loadURDF("plane.urdf")
-        self.robot_id = p.loadURDF("franka_panda/panda.urdf", [0, 0, 0], useFixedBase=True)
+        self.robot_id = robot_id
 
         # Gripper offset to account for gripper length
         # This value should be adjusted based on the actual gripper length
@@ -72,6 +65,16 @@ class RRTManipulatorPlanner:
         collisions = p.getContactPoints()
         return len(collisions) == 0
 
+    def _setup_collision_detection(self):
+        """Setup collision detection parameters"""
+        for joint in range(self.num_joints):
+            p.setCollisionFilterPair(self.panda_id, self.cube_id, joint, -1, 1)
+
+    def check_collisions(self) -> bool:
+        """Check for collisions between robot and cube"""
+        contact_points = p.getContactPoints(self.panda_id, self.cube_id)
+        return len(contact_points) > 0
+    
     def random_configuration(self):
         """Generate a random valid joint configuration"""
         joint_angles = []
@@ -165,6 +168,48 @@ class RRTManipulatorPlanner:
                 p.setJointMotorControl2(self.robot_id, i, p.POSITION_CONTROL, angle)
             p.stepSimulation()
             time.sleep(0.1)  # Visualization delay
+
+        # # A3xN path array that will be filled with waypoints through all the goal positions
+        # path_saved = np.array([[-2.54, 0.15, -0.15]]) # Start at the first goal position
+
+        # ################################################################################
+        # ####  RUN THE SIMULATION AND MOVE THE ROBOT ALONG PATH_SAVED ###################
+        # ################################################################################
+
+        # # Set the initial joint positions
+        # for joint_index, joint_pos in enumerate(goal_positions[0]):
+        #     p.resetJointState(arm_id, joint_index, joint_pos)
+
+        # # Move through the waypoints
+        # for waypoint in path_saved:
+        #     # "move" to next waypoints
+        #     for joint_index, joint_pos in enumerate(waypoint):
+        #     # run velocity control until waypoint is reached
+        #         while True:
+        #             #get current joint positions
+        #             goal_positions = [p.getJointState(arm_id, i)[0] for i in range(3)]
+        #             # calculate the displacement to reach the next waypoint
+        #             displacement_to_waypoint = waypoint-goal_positions
+        #             # check if goal is reached
+        #             max_speed = 0.05
+        #             if(np.linalg.norm(displacement_to_waypoint) < max_speed):
+        #                 break
+        #             else:
+        #                 # calculate the "velocity" to reach the next waypoint
+        #                 velocities = np.min((np.linalg.norm(displacement_to_waypoint), max_speed))*displacement_to_waypoint/np.linalg.norm(displacement_to_waypoint)
+        #                 for joint_index, joint_step in enumerate(velocities):
+        #                     p.setJointMotorControl2(
+        #                         bodyIndex=arm_id,
+        #                         jointIndex=joint_index,
+        #                         controlMode=p.VELOCITY_CONTROL,
+        #                         targetVelocity=joint_step,
+        #                     )
+                            
+        #             #Take a simulation step
+        #             p.stepSimulation()            
+        #     time.sleep(1.0 / 240.0)
+
+            
 
     def plan_and_execute_trajectory(self, goal_positions):
         """Plan and execute a trajectory through multiple goal positions"""

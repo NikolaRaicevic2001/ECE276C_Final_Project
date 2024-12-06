@@ -1,4 +1,3 @@
-from PandaEnv import PandaEnvironment
 import numpy as np
 import pybullet as p
 import pybullet_data
@@ -9,6 +8,7 @@ import math
 import os
 
 from PointCloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
+from utils import *
 
 def environment_setup(env_num = 1):
     ''' Setup the PyBullet environment '''
@@ -110,10 +110,20 @@ def environment_setup(env_num = 1):
         collision_ids = [ground_id, r2d2_id_1, r2d2_id_2, r2d2_id_3, 
                          block_id]
 
+        # Reset Panda's position to Home Position
+        home_positions = [0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]
+        for i in range(7):
+            p.resetJointState(robot_id, i, home_positions[i]),
+    
+        # Print Robot Information
+        print_robot_info(robot_id, 7)
 
-    return collision_ids, goal_id
+        # Print End Effector State
+        print(f'End Effector State:{get_end_effector_state(robot_id, 7)}')
 
-def environment_update(collision_ids, dt = 1/240, velocity = 0.0, flag_01 = 1, flag_02 = 1, flag_03 = 1):
+    return physics_client, collision_ids, goal_id, robot_id
+
+def environment_update(collision_ids, dt = 1/240, velocity = 0.1, flag_01 = 1, flag_02 = 1, flag_03 = 1):
     ''' Update the environment to make R2D2s move back and forth'''
     # Moving R2D2 back and forth
     for i in range(3):
@@ -154,20 +164,24 @@ def environment_update(collision_ids, dt = 1/240, velocity = 0.0, flag_01 = 1, f
 
     return flag_01, flag_02, flag_03
 
-
-
 if __name__ == "__main__":
     # Configuring parameters
-    duration = 300
-    fps = 30
-    time_steps = int(duration * fps)
-    dt = 1.0 / fps
-    point_cloud_count = 10
-    env_num = 4 
+    duration = 300; fps = 30
+    time_steps = int(duration * fps); dt = 1.0 / fps
+    
+    point_cloud_count = 300
+    env_num = 1
+
     point_cloud_debug_id = None
+    point_cloud_debug_id_list = []
 
     # Set the environment
-    collision_ids, goal_id = environment_setup(env_num=env_num)
+    physics_client, collision_ids, goal_id, robot_id = environment_setup(env_num=env_num)
+
+    # Create and setup environment
+    print(f"Get Position from ID: {get_position_from_id(goal_id)[0]}")
+    planner = RRTManipulatorPlanner(robot_id= robot_id)
+    planner.run(get_position_from_id(goal_id)[0])
 
     # Initializing Simulation
     p.setRealTimeSimulation(0)
@@ -184,29 +198,35 @@ if __name__ == "__main__":
             flag_01, flag_02, flag_03 = environment_update(collision_ids, dt=dt, flag_01=flag_01, flag_02=flag_02, flag_03=flag_03)
 
         # Obtain Point Cloud
-        p.removeAllUserDebugItems()
+        # p.removeAllUserDebugItems()
         # point_cloud, wRc, wtc = get_point_cloud(camera_position=[0.0, -1.5, 2.0], camera_target=[0.0, -0.2, 0.5], img_flag=True)
         point_cloud_01, wRc_01, wtc_01 = get_point_cloud(camera_position=[-0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
         point_cloud_02, wRc_02, wtc_02 = get_point_cloud(camera_position=[0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
-        point_cloud = np.concatenate((point_cloud_01, point_cloud_02), axis=0)
+        point_cloud_03, wRc_03, wtc_03 = get_point_cloud(camera_position=[-0.7, 1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=True)
+        point_cloud = np.concatenate((point_cloud_01, point_cloud_02, point_cloud_03), axis=0)
+
+        # If a previous debug item exists, remove it
+        if point_cloud_debug_id is not None and step%5 == 0:
+            for point_cloud_debug_id in point_cloud_debug_id_list:
+                p.removeUserDebugItem(point_cloud_debug_id)
+            point_cloud_debug_id_list = []
 
         # Display Downsampled Point Cloud
         if len(point_cloud) > 0:
             if len(point_cloud) > point_cloud_count:
                 downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
                 point_cloud_debug_id = p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
+                point_cloud_debug_id_list.append(point_cloud_debug_id)
 
-        # If a previous debug item exists, remove it
-        if point_cloud_debug_id is not None:
-            p.removeUserDebugItem(point_cloud_debug_id)
-
-        if step%1 == 0:
+        if step == 0:
             draw_camera_frame(wtc_01, wRc_01)
             draw_camera_frame(wtc_02, wRc_02)
+            draw_camera_frame(wtc_03, wRc_03)
 
         p.stepSimulation()
         time.sleep(1.0 / 240.0)
 
+<<<<<<< HEAD
 
     p.disconnect()
 
@@ -432,8 +452,8 @@ for step in range(time_steps):
     #             p.stepSimulation()            
     #     time.sleep(1.0 / 240.0)
 
+=======
+    p.disconnect(physics_client)
+>>>>>>> origin/main
 
-    # # Disconnect from PyBullet
-    # time.sleep(100) # Remove this line -- it is just to keep the GUI open when you first run this starter code
-    # p.disconnect()
 
