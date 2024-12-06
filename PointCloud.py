@@ -119,10 +119,10 @@ if __name__ == "__main__":
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setGravity(0, 0, -9.81)
 
-    # Load Panda robot and fix its base
+    # Load Panda robot and its environment
     ground_id = p.loadURDF("plane.urdf")
     robot_id = p.loadURDF("franka_panda/panda.urdf", [0, 0.3, 0.6], useFixedBase=True)
-    tableUid = p.loadURDF(os.path.join(pybullet_data.getDataPath(), "table/table.urdf"), basePosition=[0, 0, 0])
+    table_id = p.loadURDF(os.path.join(pybullet_data.getDataPath(), "table/table.urdf"), basePosition=[0, 0, 0], useFixedBase=True)
 
     # Add Collision Objects
     collision_ids = [ground_id] 
@@ -167,4 +167,6 @@ if __name__ == "__main__":
 
     # Disconnect PyBullet
     p.disconnect()
+
+    
 
