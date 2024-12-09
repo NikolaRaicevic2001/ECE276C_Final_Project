@@ -2,12 +2,10 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import time
-from Planner import RRTManipulatorPlanner
-from typing import Tuple, List, Optional, Dict
-import math
 import os
 
-from PointCloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
+from Planners.RRT import RRTManipulatorPlanner
+from point_cloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
 from utils import *
 
 def environment_setup(env_num = 1):
