@@ -5,9 +5,10 @@ import numpy as np
 import random
 
 class RRTManipulatorPlanner:
-    def __init__(self, robot_id=None):
+    def __init__(self, robot_id=None, collision_ids=None): 
         # Load environment and robot
         self.robot_id = robot_id
+        self.collision_ids = collision_ids
 
         # Gripper offset to account for gripper length
         # This value should be adjusted based on the actual gripper length

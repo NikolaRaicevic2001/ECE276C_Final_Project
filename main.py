@@ -123,7 +123,7 @@ def environment_setup(env_num = 1):
 
     return physics_client, collision_ids, goal_id, robot_id
 
-def environment_update(collision_ids, dt = 1/240, velocity = 0.1, flag_01 = 1, flag_02 = 1, flag_03 = 1):
+def environment_update(collision_ids, dt = 1/240, velocity = 0.5, flag_01 = 1, flag_02 = 1, flag_03 = 1):
     ''' Update the environment to make R2D2s move back and forth'''
     # Moving R2D2 back and forth
     for i in range(3):
@@ -170,7 +170,7 @@ if __name__ == "__main__":
     time_steps = int(duration * fps); dt = 1.0 / fps
     
     point_cloud_count = 300
-    env_num = 1
+    env_num = 4
 
     point_cloud_debug_id = None
     point_cloud_debug_id_list = []
@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
     # Create and setup environment
     print(f"Get Position from ID: {get_position_from_id(goal_id)[0]}")
-    planner = RRTManipulatorPlanner(robot_id= robot_id)
+    planner = RRTManipulatorPlanner(robot_id= robot_id, collision_ids=collision_ids)
     planner.run(get_position_from_id(goal_id)[0])
 
     # Initializing Simulation
