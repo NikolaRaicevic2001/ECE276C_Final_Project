@@ -180,7 +180,7 @@ def environment_update(collision_ids, dt = 1/240, velocity = 0.5, flag_01 = 1, f
                 flag_03 = 0
 
     return flag_01, flag_02, flag_03
-
+    
 if __name__ == "__main__":
     # Configuring parameters
     duration = 300; fps = 30

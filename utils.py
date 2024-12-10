@@ -19,7 +19,7 @@ def print_robot_info(panda_id, num_joints: int):
     print(f"Loaded Panda robot with {num_joints} joints")
     for i in range(num_joints):
         joint_info = p.getJointInfo(panda_id, i)
-        print(f"Joint {i}: {joint_info[1].decode('utf-8')}")
+        print(f"Joint {i}: {joint_info[1].decode('utf-8')} at joint angle {p.getJointState(panda_id, i)[0]}")
 
 def get_robot_info(robot_id):
     num_joints = p.getNumJoints(robot_id)

@@ -497,9 +497,6 @@ class RRTManipulatorPlanner:
         #         self.execute_path(path)
         #         time.sleep(1)
 
-
-
-
     def run(self, goal_positions):
         """Main execution method"""
         try:

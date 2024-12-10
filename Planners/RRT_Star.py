@@ -1,11 +1,17 @@
 from datetime import datetime
-
 import pybullet as p
 import numpy as np
-
 import pybullet_data
 import imageio
 import time
+import sys
+import os
+
+# Add the path to the sys path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import the functions
+from utils import *
 
 def check_node_collision(robot_id, object_ids, joint_position):
     """
@@ -69,13 +75,13 @@ class Node:
 ############################# RRT CLASS ##############################
 ######################################################################
 class RRT_Star:
-    def __init__(self, q_start, q_goal, robot_id, obstacle_ids, q_limits, max_iter=500, step_size=0.5):
+    def __init__(self, q_start, q_goal, robot_id, obstacle_ids, max_iter=500, step_size=0.5):
         """ RRT Initialization """
         self.q_start = Node(q_start)
         self.q_goal = Node(q_goal)
         self.obstacle_ids = obstacle_ids
         self.robot_id = robot_id
-        self.q_limits = q_limits
+        self.q_limits = np.array([[-2.8973, 2.8973],[-1.7628, 1.7628],[-2.8973, 2.8973],[-3.0718, -0.0698],[-2.8973, 2.8973],[-0.0175, 3.7525],[-2.8973, 2.8973]])
         self.max_iter = max_iter
         self.step_size = step_size
         self.node_list = [self.q_start]
@@ -198,6 +204,32 @@ class RRT_Star:
             node = node.parent
         return path[::-1]
     
+def inverse_kinematics(robot_id, target_position, target_orientation=None):
+    """Compute joint angles for a target gripper position"""
+    # If no specific orientation is provided, use a default downward orientation
+    if target_orientation is None:
+        # Quaternion for pointing straight down
+        target_orientation = p.getQuaternionFromEuler([np.pi, 0, 0])
+
+    # Adjust target position to account for gripper offset
+    # We need to move the target point back along the z-axis of the gripper
+    link_state = p.getLinkState(robot_id, 6)
+    current_orient = link_state[1]
+    current_rot_matrix = np.array(p.getMatrixFromQuaternion(current_orient)).reshape(3, 3)
+
+    # Adjust target position by subtracting the offset along the current z-axis
+    adjusted_target = np.array(target_position) - current_rot_matrix[:, 2] * 0.1
+
+    # Use PyBullet's inverse kinematics solver
+    joint_angles = p.calculateInverseKinematics(
+        robot_id,
+        6,  # End-effector link index
+        adjusted_target,
+        targetOrientation=target_orientation
+    )
+
+    return joint_angles
+
 if __name__ == "__main__":
     # Initialize PyBullet
     p.connect(p.GUI)
@@ -207,17 +239,6 @@ if __name__ == "__main__":
     # Load the plane and robot arm
     ground_id = p.loadURDF("plane.urdf")
     panda_id = p.loadURDF("franka_panda/panda.urdf", [0.0, 0.0, 0.0], useFixedBase=True)
-    
-    # Panda's joint limits
-    joint_limits = np.array([
-        [-2.8973, 2.8973],    # Joint 1
-        [-1.7628, 1.7628],    # Joint 2
-        [-2.8973, 2.8973],    # Joint 3
-        [-3.0718, -0.0698],   # Joint 4
-        [-2.8973, 2.8973],    # Joint 5
-        [-0.0175, 3.7525],    # Joint 6
-        [-2.8973, 2.8973]     # Joint 7
-    ])
 
     # Add Collision Objects
     r2d2_id_1 = p.loadURDF("r2d2.urdf", [-0.4, -0.4, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi/2]), globalScaling=0.5)
@@ -226,11 +247,25 @@ if __name__ == "__main__":
     block_id = p.loadURDF("block.urdf", [0.0, -0.4, 0.5], baseOrientation=p.getQuaternionFromEuler([0, np.pi/2, 0]), globalScaling=10.0, useFixedBase=True)
     collision_ids = [ground_id, r2d2_id_1, r2d2_id_2, r2d2_id_3, block_id]
     
-    # Goal Joint Positions for the Robot
-    goal_positions = [[0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785], [0.0, -0.785, 0.0, -1.056, 0.0, 0.7, 0.785]]
+    # Goal Positions
+    sphere_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=0.03, rgbaColor=[0, 0, 1, 1])  # Blue sphere
+    goal_id_1 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0, -0.27, 0.5])
+    goal_id_2 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[-0.12, -0.4, 0.5])
+    goal_id_3 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0, -0.52, 0.5])
+    goal_id_4 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0.12, -0.4, 0.5])
+    goal_id = [goal_id_1, goal_id_2]
+
+    # Goal Joint Positions for the Robot 
+    goal_positions = [np.array(inverse_kinematics(panda_id, target_position=get_end_effector_state(panda_id, 11)[0]))[0:7]]
+    for goal in goal_id:
+        joint_angles = np.array(inverse_kinematics(panda_id, target_position=p.getBasePositionAndOrientation(goal)[0])[0:7])
+        goal_positions.append(joint_angles)
 
     # 7xN Path Array 
-    path_saved = np.array([[0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]]) # Start at the first goal position
+    path_saved = np.array([goal_positions[0]]) # Start at the first goal position
+
+    print(f"Goal positions: {goal_positions}")
+    print(f"Path saved: {path_saved}")
 
     ##############################################################
     ########### RUN RRT* MOTION PLANNING IMPLEMENTATION ##########
@@ -240,7 +275,7 @@ if __name__ == "__main__":
         print(f"Goal positions: {goal_positions[i-1]}, {goal_positions[i]}")
 
         # Initialize the RRT planner
-        rrt = RRT_Star(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=panda_id, obstacle_ids=collision_ids, q_limits=joint_limits, max_iter=1000, step_size=0.5)
+        rrt = RRT_Star(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=panda_id, obstacle_ids=collision_ids, max_iter=1000, step_size=0.5)
 
         # Run the RRT planner
         path_saved = np.concatenate((path_saved, rrt.get_path()), axis=0)
