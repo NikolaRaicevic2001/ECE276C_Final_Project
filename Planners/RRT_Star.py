@@ -66,9 +66,9 @@ class Node:
         self.cost = 0
 
 ######################################################################
-##################### YOUR CODE HERE: RRT CLASS ######################
+############################# RRT CLASS ##############################
 ######################################################################
-class RRT:
+class RRT_Star:
     def __init__(self, q_start, q_goal, robot_id, obstacle_ids, q_limits, max_iter=500, step_size=0.5):
         """ RRT Initialization """
         self.q_start = Node(q_start)
@@ -240,7 +240,7 @@ if __name__ == "__main__":
         print(f"Goal positions: {goal_positions[i-1]}, {goal_positions[i]}")
 
         # Initialize the RRT planner
-        rrt = RRT(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=panda_id, obstacle_ids=collision_ids, q_limits=joint_limits, max_iter=1000, step_size=0.5)
+        rrt = RRT_Star(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=panda_id, obstacle_ids=collision_ids, q_limits=joint_limits, max_iter=1000, step_size=0.5)
 
         # Run the RRT planner
         path_saved = np.concatenate((path_saved, rrt.get_path()), axis=0)

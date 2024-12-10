@@ -5,6 +5,7 @@ import imageio
 import time
 import os
 
+from Planners.RRT_Star import RRT_Star
 from Planners.RRT import RRTManipulatorPlanner, RealTimeRRT
 from point_cloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
 from utils import *
@@ -97,11 +98,11 @@ def environment_setup(env_num = 1):
                          spherical_joint_limit_id]
 
         # Add Goal IDs
-        sphere_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=0.01, rgbaColor=[0, 0, 1, 1])               # Create a visual shape for the sphere (Blue Sphere)
-        goal_id_1 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.31, 0.05])       # Create a multi-body for the sphere 1
-        goal_id_2 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[-0.09, -0.4, 0.05])    # Create a multi-body for the sphere 2
-        goal_id_3 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.49, 0.05])       # Create a multi-body for the sphere 3
-        goal_id_4 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0.09, -0.4, 0.05])     # Create a multi-body for the sphere 4
+        sphere_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=0.03, rgbaColor=[0, 0, 1, 1])  # Blue sphere
+        goal_id_1 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0, -0.28, 0.5])
+        goal_id_2 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[-0.12, -0.4, 0.5])
+        goal_id_3 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0, -0.52, 0.5])
+        goal_id_4 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0.12, -0.4, 0.5])
         goal_id = [goal_id_1, goal_id_2, goal_id_3, goal_id_4]
 
     # Environment 04 - Construction Site Dynamic
@@ -118,6 +119,13 @@ def environment_setup(env_num = 1):
         # Add Collision Objects
         collision_ids = [ground_id, r2d2_id_1, r2d2_id_2, r2d2_id_3, 
                          block_id]
+        # Add Goal IDs
+        sphere_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=0.01, rgbaColor=[0, 0, 1, 1])               # Create a visual shape for the sphere (Blue Sphere)
+        goal_id_1 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.3, 0.3], globalScaling = 0.5)       # Create a multi-body for the sphere 1
+        goal_id_2 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[-0.1, -0.4, 0.3], globalScaling = 0.5)    # Create a multi-body for the sphere 2
+        goal_id_3 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.5, 0.3], globalScaling = 0.5)       # Create a multi-body for the sphere 3
+        goal_id_4 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0.1, -0.4, 0.3], globalScaling = 0.5)     # Create a multi-body for the sphere 4
+        goal_id = [goal_id_1, goal_id_2, goal_id_3, goal_id_4]
 
     # Reset Panda's position to Home Position
     home_positions = [0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]
@@ -179,8 +187,8 @@ if __name__ == "__main__":
     time_steps = int(duration * fps); dt = 1.0 / fps
     
     point_cloud_count = 300
-    env_num = 1
-    planner = "Real_Time_RRT"
+    env_num = 3
+    planner = "RRT_Real_Time"
 
     # Set the environment
     physics_client, collision_ids, goal_id, robot_id = environment_setup(env_num=env_num)
@@ -190,10 +198,14 @@ if __name__ == "__main__":
         print(f"Get Position from ID: {get_position_from_id(goal_id[0])[0]}")
         planner = RRTManipulatorPlanner(robot_id= robot_id, collision_ids=collision_ids)
         planner.run(get_position_from_id(goal_id[0])[0])
-    elif planner == "Real_Time_RRT":
+    elif planner == "RRT_Star":
         print(f"Get Position from ID: {get_position_from_id(goal_id[0])[0]}")
-        planner = RealTimeRRT(robot_id= robot_id, collision_ids=collision_ids, goal_position = get_position_from_id(goal_id[0])[0])
-        planner.run(start_position = get_end_effector_state(robot_id, 11)[0],goal_position = get_position_from_id(goal_id[0])[0])
+        planner = RRT_Star(robot_id= robot_id, collision_ids=collision_ids)
+        planner.run(get_position_from_id(goal_id[0])[0], rrt_star=True)
+    elif planner == "RRT_Real_Time":
+        print(f"Get Position from ID: {get_position_from_id(goal_id[2])[0]}")
+        planner = RealTimeRRT(robot_id= robot_id, collision_ids=collision_ids, goal_position = get_position_from_id(goal_id[2])[0])
+        planner.run(start_position = get_end_effector_state(robot_id, 11)[0],goal_position = get_position_from_id(goal_id[2])[0])
 
     # Initializing Simulation
     p.setRealTimeSimulation(0)
@@ -253,8 +265,12 @@ if __name__ == "__main__":
         with imageio.get_writer('./Video_Demos/RRT.gif', mode='I', duration=duration/len(frames_list)) as writer:
             for frame in frames_list:
                 writer.append_data(frame)
-    if planner == "Real_Time_RRT":
-        with imageio.get_writer('./Video_Demos/Real_Time_RRT.gif', mode='I', duration=duration/len(frames_list)) as writer:
+    if planner == "RRT_Star":
+        with imageio.get_writer('./Video_Demos/RRT_Star.gif', mode='I', duration=duration/len(frames_list)) as writer:
+            for frame in frames_list:
+                writer.append_data(frame)
+    if planner == "RRT_Real_Time":
+        with imageio.get_writer('./Video_Demos/RRT_Real_Time.gif', mode='I', duration=duration/len(frames_list)) as writer:
             for frame in frames_list:
                 writer.append_data(frame)
 

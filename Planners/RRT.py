@@ -440,16 +440,13 @@ class RRTManipulatorPlanner:
 
         return path
 
-
     def execute_path(self, path):
         """Execute a planned path in simulation"""
         for joint_angles in path:
             for i, angle in enumerate(joint_angles):
                 p.setJointMotorControl2(self.robot_id, i, p.POSITION_CONTROL, angle)
             p.stepSimulation()
-            time.sleep(0.1)  # Visualization delay
-
-            
+            time.sleep(0.1)  # Visualization delay   
 
     def plan_and_execute_trajectory(self, goal_positions):
         """Plan and execute a trajectory through multiple goal positions"""
