@@ -4,12 +4,14 @@ import time
 import numpy as np
 import random
 
-
 import pybullet as p
 import numpy as np
 import time
 import random
 
+#########################
+##### RealTimeRRT #######
+#########################
 class RealTimeRRT:
     def __init__(self, robot_id=None, collision_ids=None, goal_position=None, max_planning_time=0.1):
         """
@@ -275,6 +277,7 @@ class RealTimeRRT:
 
             goal_config = self.inverse_kinematics(goal_position)
 
+<<<<<<< HEAD:Planner.py
             # Run the real-time path planning
             self.real_time_rrt_star(start_config, goal_config)
 
@@ -293,8 +296,13 @@ class RealTimeRRT:
             p.disconnect()
 
 
+=======
+###################################
+##### RRTManipulatorPlanner #######
+###################################
+>>>>>>> main:Planners/RRT.py
 class RRTManipulatorPlanner:
-    def __init__(self, robot_id=None, collision_ids = None):
+    def __init__(self, robot_id=None, collision_ids=None): 
         # Load environment and robot
         self.robot_id = robot_id
         self.collision_ids = collision_ids
@@ -495,16 +503,13 @@ class RRTManipulatorPlanner:
 
         return path
 
-
     def execute_path(self, path):
         """Execute a planned path in simulation"""
         for joint_angles in path:
             for i, angle in enumerate(joint_angles):
                 p.setJointMotorControl2(self.robot_id, i, p.POSITION_CONTROL, angle)
             p.stepSimulation()
-            time.sleep(0.1)  # Visualization delay
-
-            
+            time.sleep(0.1)  # Visualization delay   
 
     def plan_and_execute_trajectory(self, goal_positions):
         """Plan and execute a trajectory through multiple goal positions"""
