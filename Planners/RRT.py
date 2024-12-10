@@ -240,7 +240,11 @@ class RealTimeRRT:
 
 
 class RRTManipulatorPlanner:
+<<<<<<< HEAD:Planner.py
     def __init__(self, robot_id=None, collision_ids = None):
+=======
+    def __init__(self, robot_id=None, collision_ids=None): 
+>>>>>>> origin/main:Planners/RRT.py
         # Load environment and robot
         self.robot_id = robot_id
         self.collision_ids = collision_ids
