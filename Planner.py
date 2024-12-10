@@ -222,21 +222,75 @@ class RealTimeRRT:
             if self.distance(next_waypoint, self.forward_kinematics(goal_config)) < 0.1:
                 break
 
+
+    def plan_and_execute_trajectory(self, goal_positions):
+        """Plan and execute a trajectory through multiple goal positions"""
+        # Start from initial zero configuration
+        current_angles = [0, 0, 0, 0, 0, 0, 0]
+        total_path = []
+        verified_goal_angles = []
+
+        # Downward orientation for gripper (pointing straight down)
+        goal_orientation = p.getQuaternionFromEuler([np.pi, 0, 0])
+
+        # First, plan paths and verify tip positions for all goal positions
+        for goal_position in goal_positions:
+            # Calculate goal joint angles using IK
+            goal_angles = self.inverse_kinematics(goal_position, goal_orientation)
+            print(f"Moving to position: {goal_position}")
+            print("Goal Joint Angles:", goal_angles[:7])
+
+            # Verify gripper tip position
+            for i, angle in enumerate(goal_angles[:7]):
+                p.resetJointState(self.robot_id, i, angle)
+
+            gripper_pos = self.forward_kinematics(goal_angles[:7])
+            print("Actual Gripper Position:", gripper_pos)
+            print("Target Position:", goal_position)
+
+            distance_to_target = np.linalg.norm(np.array(gripper_pos) - np.array(goal_position))
+            print("Distance to Target:", distance_to_target)
+
+            # Plan path using RRT*
+            path = self.plan_rrt_star(current_angles, goal_angles)
+            print("Planned Path Length:", len(path))
+
+            total_path.append(path)
+            verified_goal_angles.append(goal_angles[:7])
+
+
+            if path:
+                self.execute_path(path)
+                time.sleep(1)
+
+            # Update current angles to the last configuration of the path
+            current_angles = path[-1]
+
+
     def run(self, start_position, goal_position):
         """Execute the Real-Time RRT* planner"""
-        # Convert positions to joint configurations using inverse kinematics
-        start_config = self.inverse_kinematics(start_position)
-        goal_config = self.inverse_kinematics(goal_position)
+        try:
+            # Convert positions to joint configurations using inverse kinematics
+            start_config = self.inverse_kinematics(start_position)
 
-        # Run the real-time path planning
-        self.real_time_rrt_star(start_config, goal_config)
+            goal_config = self.inverse_kinematics(goal_position)
 
-        print("Path planning completed!")
+            # Run the real-time path planning
+            self.real_time_rrt_star(start_config, goal_config)
 
+            print("Path planning completed!")
 
+            # Keep simulation running
+            while True:
+                p.stepSimulation()
+                time.sleep(0.01)
 
+        except KeyboardInterrupt:
+            self.cleanup()
 
-
+        def cleanup():
+            """Disocnnect from PyBullet simulation"""
+            p.disconnect()
 
 
 class RRTManipulatorPlanner:
@@ -495,13 +549,6 @@ class RRTManipulatorPlanner:
             # Update current angles to the last configuration of the path
             current_angles = path[-1]
 
-        # Now execute the entire planned trajectory
-        # for path in total_path:
-        #     if path:
-        #         self.execute_path(path)
-        #         time.sleep(1)
-
-
 
 
     def run(self, goal_positions):
@@ -537,46 +584,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-# # A3xN path array that will be filled with waypoints through all the goal positions
-# path_saved = np.array([[-2.54, 0.15, -0.15]]) # Start at the first goal position
-
-# ################################################################################
-# ####  RUN THE SIMULATION AND MOVE THE ROBOT ALONG PATH_SAVED ###################
-# ################################################################################
-
-# # Set the initial joint positions
-# for joint_index, joint_pos in enumerate(goal_positions[0]):
-#     p.resetJointState(arm_id, joint_index, joint_pos)
-
-# # Move through the waypoints
-# for waypoint in path_saved:
-#     # "move" to next waypoints
-#     for joint_index, joint_pos in enumerate(waypoint):
-#     # run velocity control until waypoint is reached
-#         while True:
-#             #get current joint positions
-#             goal_positions = [p.getJointState(arm_id, i)[0] for i in range(3)]
-#             # calculate the displacement to reach the next waypoint
-#             displacement_to_waypoint = waypoint-goal_positions
-#             # check if goal is reached
-#             max_speed = 0.05
-#             if(np.linalg.norm(displacement_to_waypoint) < max_speed):
-#                 break
-#             else:
-#                 # calculate the "velocity" to reach the next waypoint
-#                 velocities = np.min((np.linalg.norm(displacement_to_waypoint), max_speed))*displacement_to_waypoint/np.linalg.norm(displacement_to_waypoint)
-#                 for joint_index, joint_step in enumerate(velocities):
-#                     p.setJointMotorControl2(
-#                         bodyIndex=arm_id,
-#                         jointIndex=joint_index,
-#                         controlMode=p.VELOCITY_CONTROL,
-#                         targetVelocity=joint_step,
-#                     )
-
-#             #Take a simulation step
-#             p.stepSimulation()
-#     time.sleep(1.0 / 240.0)
-
-# Cost changing
-# Scheduler

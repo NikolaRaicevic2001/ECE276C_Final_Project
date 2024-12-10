@@ -180,8 +180,10 @@ if __name__ == "__main__":
 
     # Create and setup environment
     print(f"Get Position from ID: {get_position_from_id(goal_id)[0]}")
-    planner = RealTimeRRT(robot_id= robot_id, collision_ids=collision_ids, goal_position=get_position_from_id(goal_id)[0])
-    planner.run(np.array([0, 0, 0]), get_position_from_id(goal_id)[0])
+    # planner = RealTimeRRT(robot_id= robot_id, collision_ids=collision_ids, goal_position=get_position_from_id(goal_id)[0])
+    # planner.run(np.array([0, 0, 0]), get_position_from_id(goal_id)[0])
+    planner = RRTManipulatorPlanner(robot_id= robot_id, collision_ids=collision_ids)
+    planner.run(get_position_from_id(goal_id)[0])
 
     # Initializing Simulation
     p.setRealTimeSimulation(0)
