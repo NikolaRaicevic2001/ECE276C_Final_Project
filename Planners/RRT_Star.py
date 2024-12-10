@@ -233,7 +233,7 @@ if __name__ == "__main__":
     path_saved = np.array([[0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]]) # Start at the first goal position
 
     ##############################################################
-    ########### RUN RRT* MOTION PLANNING IMPLEMENTATION ###########
+    ########### RUN RRT* MOTION PLANNING IMPLEMENTATION ##########
     ##############################################################
     for i in range(1, len(goal_positions)):
         print(f"Running RRT Star Motion Planner for goal position {i}")
