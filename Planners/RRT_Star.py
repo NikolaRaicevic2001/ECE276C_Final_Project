@@ -69,18 +69,8 @@ class Node:
 ##################### YOUR CODE HERE: RRT CLASS ######################
 ######################################################################
 class RRT:
-    def __init__(self, q_start, q_goal, robot_id, obstacle_ids, q_limits, max_iter=10000, step_size=0.5):
-        """
-        RRT Initialization.
-
-        Parameters:
-        - q_start: List of starting joint angles [x1, x2, ..., xn].
-        - q_goal: List of goal joint angles [x1, x2, ..., xn].
-        - obstacle_ids: List of obstacles, each as a tuple ([center1, center2, ..., centern], radius).
-        - q_limits: List of tuples [(min_x1, max_x1), ..., (min_xn, max_xn)] representing the limits in each dimension.
-        - max_iter: Maximum number of iterations.
-        - step_size: Maximum step size to expand the tree.
-        """
+    def __init__(self, q_start, q_goal, robot_id, obstacle_ids, q_limits, max_iter=500, step_size=0.5):
+        """ RRT Initialization """
         self.q_start = Node(q_start)
         self.q_goal = Node(q_goal)
         self.obstacle_ids = obstacle_ids
@@ -194,14 +184,11 @@ class RRT:
 
         return self.node_list
 
-    def get_path(self, plan_id=1):
+    def get_path(self):
         """Return the path from the start node to the goal node."""
         
         # Run the RRT/RRT* algorithm
-        if plan_id == 1:
-            self.plan()
-        elif plan_id == 2:
-            self.plan_2()
+        self.plan_2()
 
         # Get the path from the start node to the goal node
         path = []
@@ -212,19 +199,6 @@ class RRT:
         return path[::-1]
     
 if __name__ == "__main__":
-      # Goal Joint Positions for the Robot
-    goal_positions = [[-2.54, 0.15, -0.15], [-1.82,0.15,-0.15],[0.5, 0.15,-0.15], [1.7,0.2,-0.15],[-2.54, 0.15, -0.15]]
-
-    # Joint Limits of the Robot
-    joint_limits = [[-np.pi, np.pi], [0, np.pi], [-np.pi, np.pi]]
-
-    # A3xN path array that will be filled with waypoints through all the goal positions
-    path_saved = np.array([[-2.54, 0.15, -0.15]]) # Start at the first goal position
-
-     #######################
-    #### PROBLEM SETUP ####
-    #######################
-
     # Initialize PyBullet
     p.connect(p.GUI)
     p.setAdditionalSearchPath(pybullet_data.getDataPath()) # For default URDFs
@@ -232,99 +206,60 @@ if __name__ == "__main__":
 
     # Load the plane and robot arm
     ground_id = p.loadURDF("plane.urdf")
-    arm_id = p.loadURDF("three_link_arm.urdf", [0, 0, 0], useFixedBase=True)
+    panda_id = p.loadURDF("franka_panda/panda.urdf", [0.0, 0.0, 0.0], useFixedBase=True)
     
+    # Panda's joint limits
+    joint_limits = np.array([
+        [-2.8973, 2.8973],    # Joint 1
+        [-1.7628, 1.7628],    # Joint 2
+        [-2.8973, 2.8973],    # Joint 3
+        [-3.0718, -0.0698],   # Joint 4
+        [-2.8973, 2.8973],    # Joint 5
+        [-0.0175, 3.7525],    # Joint 6
+        [-2.8973, 2.8973]     # Joint 7
+    ])
+
     # Add Collision Objects
-    collision_ids = [ground_id] # add the ground to the collision list
-    collision_positions = [[0.3, 0.5, 0.251], [-0.3, 0.3, 0.101], [-1, -0.15, 0.251], [-1, -0.15, 0.752], [-0.5, -1, 0.251], [0.5, -0.35, 0.201], [0.5, -0.35, 0.602]]
-    collision_orientations =  [[0, 0, 0.5], [0, 0, 0.2], [0, 0, 0],[0, 0, 1], [0, 0, 0], [0, 0, .25], [0, 0, 0.5]]
-    collision_scales = [0.5, 0.25, 0.5, 0.5, 0.5, 0.4, 0.4]
-    for i in range(len(collision_scales)):
-        collision_ids.append(p.loadURDF("cube.urdf", basePosition=collision_positions[i], baseOrientation=p.getQuaternionFromEuler(collision_orientations[i]), globalScaling=collision_scales[i]))
-
-    # Goal Joint Positions for the Robot
-    goal_positions = [[-2.54, 0.15, -0.15], [-1.82,0.15,-0.15],[0.5, 0.15,-0.15], [1.7,0.2,-0.15],[-2.54, 0.15, -0.15]]
-
-    # Joint Limits of the Robot
-    joint_limits = [[-np.pi, np.pi], [0, np.pi], [-np.pi, np.pi]]
-
-    # A3xN path array that will be filled with waypoints through all the goal positions
-    path_saved = np.array([[-2.54, 0.15, -0.15]]) # Start at the first goal position
-
-    ####################################################################################################
-    #### YOUR CODE HERE: RUN RRT MOTION PLANNER FOR ALL goal_positions (starting at goal position 1) ###
-    ####################################################################################################
-
-    ##############################################################
-    ############# Test check_edge_collision function #############
-    ##############################################################
-    # # Get the joint indices of the robot
-    # for idx in range(p.getNumJoints(arm_id)): 
-    #     info = p.getJointInfo(arm_id, idx)
-    #     print('Joint {}: {}'.format(info[1], info[14]))
-
-    # for _ in range(1200): 
-    #     p.stepSimulation()
-    #     time.sleep(1./240.)
-
-    # # Test check_edge_collision function
-    # print('Testing check_edge_collision function:')
-    # print(f'COllision_ids = {collision_ids}')
-    # print(check_edge_collision(arm_id, collision_ids, [-2.54, 0.15, -0.15], [-1.82,0.15,-0.15], discretization_step=0.01))  # Expected output: True
-    # print(check_edge_collision(arm_id, collision_ids, [-1.82,0.15,-0.15], [0.5, 0.15,-0.15], discretization_step=0.01)) # Expected output: True
-    # print(check_edge_collision(arm_id, collision_ids, [-1.82, 0.15, -0.15 ], [0.39628076, 0.47177292, -0.03040937], discretization_step=0.01)) # Expected output: True
-    # print(check_edge_collision(arm_id, collision_ids, [0.39628076, 0.47177292, -0.03040937], [0.5, 0.15,-0.15], discretization_step=0.01)) # Expected output: True
-
-
-    ##############################################################
-    ########### RUN RRT MOTION PLANNING IMPLEMENTATION ###########
-    ##############################################################
+    r2d2_id_1 = p.loadURDF("r2d2.urdf", [-0.4, -0.4, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi/2]), globalScaling=0.5)
+    r2d2_id_2 = p.loadURDF("r2d2.urdf", [0.4, -0.4, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, -np.pi/2]), globalScaling=0.5)
+    r2d2_id_3 = p.loadURDF("r2d2.urdf", [0.0, -0.8, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi]), globalScaling=0.5)
+    block_id = p.loadURDF("block.urdf", [0.0, -0.4, 0.5], baseOrientation=p.getQuaternionFromEuler([0, np.pi/2, 0]), globalScaling=10.0, useFixedBase=True)
+    collision_ids = [ground_id, r2d2_id_1, r2d2_id_2, r2d2_id_3, block_id]
     
-    # Set the motion planning algorithm to run
-    motion_planning_alogirthm = 2
+    # Goal Joint Positions for the Robot
+    goal_positions = [[0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785], [0.0, -0.785, 0.0, -1.056, 0.0, 0.7, 0.785]]
 
-    if motion_planning_alogirthm == 1:
-        # Run RRT Motion Planner for all goal_positions
-        for i in range(1, len(goal_positions)):
-            print(f"Running RRT Motion Planner for goal position {i}")
-            print(f"Goal positions: {goal_positions[i-1]}, {goal_positions[i]}")
+    # 7xN Path Array 
+    path_saved = np.array([[0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]]) # Start at the first goal position
 
-            # Initialize the RRT planner
-            rrt = RRT(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=arm_id, obstacle_ids=collision_ids, q_limits=joint_limits, max_iter=10000, step_size=0.5)
+    ##############################################################
+    ########### RUN RRT* MOTION PLANNING IMPLEMENTATION ###########
+    ##############################################################
+    for i in range(1, len(goal_positions)):
+        print(f"Running RRT Star Motion Planner for goal position {i}")
+        print(f"Goal positions: {goal_positions[i-1]}, {goal_positions[i]}")
 
-            # Run the RRT planner
-            path_saved = np.concatenate((path_saved, rrt.get_path(plan_id = motion_planning_alogirthm)), axis=0)
+        # Initialize the RRT planner
+        rrt = RRT(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=panda_id, obstacle_ids=collision_ids, q_limits=joint_limits, max_iter=1000, step_size=0.5)
 
-        print(f"Path saved: {path_saved}")
+        # Run the RRT planner
+        path_saved = np.concatenate((path_saved, rrt.get_path()), axis=0)
 
-    if motion_planning_alogirthm == 2:
-        # Run RRT* Motion Planner for all goal_positions
-        for i in range(1, len(goal_positions)):
-            print(f"Running RRT Star Motion Planner for goal position {i}")
-            print(f"Goal positions: {goal_positions[i-1]}, {goal_positions[i]}")
-
-            # Initialize the RRT planner
-            rrt = RRT(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=arm_id, obstacle_ids=collision_ids, q_limits=joint_limits, max_iter=10000, step_size=0.5)
-
-            # Run the RRT planner
-            path_saved = np.concatenate((path_saved, rrt.get_path(plan_id = motion_planning_alogirthm)), axis=0)
-
-        print(f"Path saved: {path_saved}")
+    print(f"Path saved: {path_saved}")
 
     ################################################################################
     ####  RUN THE SIMULATION AND MOVE THE ROBOT ALONG PATH_SAVED ###################
     ################################################################################
-
     # Move to all goal positions to check for collisions
     for i,goal_position in enumerate(goal_positions):
         print(f"Goal position {i}: {goal_position}")
         for joint_index, joint_pos in enumerate(goal_positions[i]):
-            p.resetJointState(arm_id, joint_index, joint_pos)
+            p.resetJointState(panda_id, joint_index, joint_pos)
         time.sleep(2.0)
 
     # Set the initial joint positions
     for joint_index, joint_pos in enumerate(goal_positions[0]):
-        p.resetJointState(arm_id, joint_index, joint_pos)
+        p.resetJointState(panda_id, joint_index, joint_pos)
 
     # Move through the waypoints
     frames_list = []
@@ -336,7 +271,7 @@ if __name__ == "__main__":
         # run velocity control until waypoint is reached
             while True:
                 #get current joint positions
-                goal_positions_waypoint = [p.getJointState(arm_id, i)[0] for i in range(3)]
+                goal_positions_waypoint = [p.getJointState(panda_id, i)[0] for i in range(7)]
                 # calculate the displacement to reach the next waypoint
                 displacement_to_waypoint = waypoint-goal_positions_waypoint
                 # check if goal is reached
@@ -349,7 +284,7 @@ if __name__ == "__main__":
                     # calculate the "velocity" to reach the next waypoint
                     velocities = np.min((np.linalg.norm(displacement_to_waypoint), max_speed))*displacement_to_waypoint/np.linalg.norm(displacement_to_waypoint)
                     for joint_index, joint_step in enumerate(velocities):
-                        p.setJointMotorControl2(bodyIndex=arm_id,jointIndex=joint_index,controlMode=p.VELOCITY_CONTROL,targetVelocity=joint_step)
+                        p.setJointMotorControl2(bodyIndex=panda_id,jointIndex=joint_index,controlMode=p.VELOCITY_CONTROL,targetVelocity=joint_step)
 
                 # Capture frames for animation every 2 seconds
                 current_time = datetime.now()
@@ -368,16 +303,10 @@ if __name__ == "__main__":
                 p.stepSimulation()            
                 time.sleep(1.0 / 2400.0)
 
-    if motion_planning_alogirthm == 1:
-        # Save each set of frames as an animated GIF
-        with imageio.get_writer('ECE276C_HW04_RRT.gif', mode='I', duration=duration/len(frames_list)) as writer:
-            for frame in frames_list:
-                writer.append_data(frame)
-    if motion_planning_alogirthm == 2:
-        # Save each set of frames as an animated GIF
-        with imageio.get_writer('ECE276C_HW04_RRT_star.gif', mode='I', duration=duration/len(frames_list)) as writer:
-            for frame in frames_list:
-                writer.append_data(frame)
+    # Save each set of frames as an animated GIF
+    with imageio.get_writer('./Video_Demos/RRT_Star.gif', mode='I', duration=duration/len(frames_list)) as writer:
+        for frame in frames_list:
+            writer.append_data(frame)
 
     # Disconnect from PyBullet
     p.disconnect()
