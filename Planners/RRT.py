@@ -4,12 +4,14 @@ import time
 import numpy as np
 import random
 
-
 import pybullet as p
 import numpy as np
 import time
 import random
 
+#########################
+##### RealTimeRRT #######
+#########################
 class RealTimeRRT:
     def __init__(self, robot_id=None, collision_ids=None, goal_position=None, max_planning_time=0.1):
         """
@@ -233,18 +235,11 @@ class RealTimeRRT:
 
         print("Path planning completed!")
 
-
-
-
-
-
-
+###################################
+##### RRTManipulatorPlanner #######
+###################################
 class RRTManipulatorPlanner:
-<<<<<<< HEAD:Planner.py
-    def __init__(self, robot_id=None, collision_ids = None):
-=======
     def __init__(self, robot_id=None, collision_ids=None): 
->>>>>>> origin/main:Planners/RRT.py
         # Load environment and robot
         self.robot_id = robot_id
         self.collision_ids = collision_ids
