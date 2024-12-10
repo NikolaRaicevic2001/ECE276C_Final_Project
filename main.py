@@ -2,7 +2,7 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import time
-from Planner import RRTManipulatorPlanner
+from Planner import RRTManipulatorPlanner, RealTimeRRT
 from typing import Tuple, List, Optional, Dict
 import math
 import os
@@ -180,8 +180,8 @@ if __name__ == "__main__":
 
     # Create and setup environment
     print(f"Get Position from ID: {get_position_from_id(goal_id)[0]}")
-    planner = RRTManipulatorPlanner(robot_id= robot_id)
-    planner.run(get_position_from_id(goal_id)[0])
+    planner = RealTimeRRT(robot_id= robot_id, collision_ids=collision_ids, goal_position=get_position_from_id(goal_id)[0])
+    planner.run(np.array([0, 0, 0]), get_position_from_id(goal_id)[0])
 
     # Initializing Simulation
     p.setRealTimeSimulation(0)
@@ -226,7 +226,6 @@ if __name__ == "__main__":
         p.stepSimulation()
         time.sleep(1.0 / 240.0)
 
-<<<<<<< HEAD
 
     p.disconnect()
 
@@ -452,8 +451,4 @@ for step in range(time_steps):
     #             p.stepSimulation()            
     #     time.sleep(1.0 / 240.0)
 
-=======
     p.disconnect(physics_client)
->>>>>>> origin/main
-
-
