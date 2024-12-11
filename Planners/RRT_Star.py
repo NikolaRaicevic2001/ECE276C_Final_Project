@@ -107,29 +107,6 @@ class RRT_Star:
         distances = [np.linalg.norm(node.joint_angles - random_point) for node in self.node_list]
         nearest_node = self.node_list[np.argmin(distances)]
         return nearest_node
-
-    def plan(self):
-        """Run the RRT algorithm to find a path of dimension Nx3. Limit the search to only max_iter iterations."""
-        
-        # Iterate through the max number of iterations
-        for _ in range(self.max_iter):
-            # Generate a random node
-            random_point = np.random.uniform(low=[limit[0] for limit in self.q_limits], high=[limit[1] for limit in self.q_limits])
-            nearest_node = self.get_nearest_node(random_point)
-            new_node = self.step(nearest_node, random_point)
-            
-            # Check for collisions
-            if not check_edge_collision(self.robot_id, self.obstacle_ids, nearest_node.joint_angles, new_node.joint_angles):
-                new_node.parent = nearest_node
-                self.node_list.append(new_node)
-
-                # Check if the goal is reached
-                if np.linalg.norm(new_node.joint_angles - self.q_goal.joint_angles) < self.step_size:
-                    self.q_goal.parent = new_node
-                    self.node_list.append(self.q_goal)
-                    break
-
-        return self.node_list
     
     def neighbors(self, node, gamma = 0.005, etta = 0.005):
         """Find the neighbors of a node within a certain radius."""
@@ -160,7 +137,7 @@ class RRT_Star:
                 neighbor.parent = node
         return neighbors
 
-    def plan_2(self):
+    def plan(self):
         """Run the RRT* algorithm to find a path of dimension Nx3. Limit the search to only max_iter iterations."""
             
         # Iterate through the max number of iterations
@@ -194,7 +171,7 @@ class RRT_Star:
         """Return the path from the start node to the goal node."""
         
         # Run the RRT/RRT* algorithm
-        self.plan_2()
+        self.plan()
 
         # Get the path from the start node to the goal node
         path = []

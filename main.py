@@ -270,37 +270,38 @@ if __name__ == "__main__":
 
             flag_01, flag_02, flag_03 = environment_update(collision_ids, dt=dt, flag_01=flag_01, flag_02=flag_02, flag_03=flag_03)
 
-        # # Obtain Point Cloud
-        # # p.removeAllUserDebugItems()
-        # # point_cloud, wRc, wtc = get_point_cloud(camera_position=[0.0, -1.5, 2.0], camera_target=[0.0, -0.2, 0.5], img_flag=True)
+        # Obtain Point Cloud
+        # p.removeAllUserDebugItems()
+        point_cloud, wRc, wtc = get_point_cloud(camera_position=[0.0, -1.5, 2.0], camera_target=[0.0, -0.2, 0.5], img_flag=True)
         # point_cloud_01, wRc_01, wtc_01 = get_point_cloud(camera_position=[-0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
         # point_cloud_02, wRc_02, wtc_02 = get_point_cloud(camera_position=[0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
-        # point_cloud_03, wRc_03, wtc_03 = get_point_cloud(camera_position=[-0.7, 1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=True)
+        # point_cloud_03, wRc_03, wtc_03 = get_point_cloud(camera_position=[-0.7, 1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
         # point_cloud = np.concatenate((point_cloud_01, point_cloud_02, point_cloud_03), axis=0)
 
-        # # If a previous debug item exists, remove it
-        # if point_cloud_debug_id is not None and step%5 == 0:
-        #     for point_cloud_debug_id in point_cloud_debug_id_list:
-        #         p.removeUserDebugItem(point_cloud_debug_id)
-        #     point_cloud_debug_id_list = []
+        # If a previous debug item exists, remove it
+        if point_cloud_debug_id is not None and step%5 == 0:
+            for point_cloud_debug_id in point_cloud_debug_id_list:
+                p.removeUserDebugItem(point_cloud_debug_id)
+            point_cloud_debug_id_list = []
 
         # Capture frames
         if step%100 == 0:
             frame = p.getCameraImage(1280, 960)
             frames_list.append(frame[2])
 
-        # # Display Downsampled Point Cloud
-        # if len(point_cloud) > 0:
-        #     if len(point_cloud) > point_cloud_count:
-        #         downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
-        #         point_cloud_debug_id = p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
-        #         point_cloud_debug_id_list.append(point_cloud_debug_id)
+        # Display Downsampled Point Cloud
+        if len(point_cloud) > 0:
+            if len(point_cloud) > point_cloud_count:
+                downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
+                point_cloud_debug_id = p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
+                point_cloud_debug_id_list.append(point_cloud_debug_id)
 
-        # # Draw the camera
-        # if step == 0:
-        #     draw_camera_frame(wtc_01, wRc_01)
-        #     draw_camera_frame(wtc_02, wRc_02)
-        #     draw_camera_frame(wtc_03, wRc_03)
+        # Draw the camera
+        if step == 0:
+            draw_camera_frame(wtc, wRc)
+            # draw_camera_frame(wtc_01, wRc_01)
+            # draw_camera_frame(wtc_02, wRc_02)
+            # draw_camera_frame(wtc_03, wRc_03)
 
         #get current joint positions
         goal_positions_waypoint = [p.getJointState(robot_id, i)[0] for i in range(7)]
@@ -318,10 +319,9 @@ if __name__ == "__main__":
                 print("Path traversal completed.")
                 break
         else:
-            # Calculate the velocity to reach the next waypoint
-            velocities = np.min([np.linalg.norm(displacement_to_waypoint), max_speed]) * displacement_to_waypoint / np.linalg.norm(displacement_to_waypoint)
-            for joint_index, joint_step in enumerate(velocities):
-                p.setJointMotorControl2(bodyIndex=robot_id, jointIndex=joint_index, controlMode=p.VELOCITY_CONTROL, targetVelocity=joint_step)
+            # Calculate the target positions to reach the next waypoint
+            for joint_index, target_position in enumerate(waypoint):  
+                p.setJointMotorControl2(bodyIndex=robot_id, jointIndex=joint_index, controlMode=p.POSITION_CONTROL, targetPosition=target_position, positionGain=0.03, velocityGain=1.0,maxVelocity=max_speed)
 
         # Take a simulation step
         p.stepSimulation()            
