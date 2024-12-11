@@ -6,6 +6,7 @@ import pybullet as p
 ###################################
 def get_position_from_id(object_id: int) -> Tuple[List[float], List[float]]:
     ''' Get the position and orientation of the object '''
+    # for object_id in object_ids:
     pos, ori = p.getBasePositionAndOrientation(object_id)
     return (pos, ori)
 

@@ -6,7 +6,7 @@ import time
 import os
 
 from Planners.RRT_Star import RRT_Star
-from Planners.RRT import RRTManipulatorPlanner, RealTimeRRT
+from Planners.RRT import RRTManipulatorPlanner, RealTimeRRT, RealTimeRRTObstacleAvoidance
 from point_cloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
 from utils import *
 
@@ -188,7 +188,7 @@ if __name__ == "__main__":
     
     point_cloud_count = 300
     env_num = 3
-    planner = "RRT_Real_Time"
+    planner = "RRT_Real_Time_Object"
 
     # Set the environment
     physics_client, collision_ids, goal_id, robot_id = environment_setup(env_num=env_num)
@@ -196,16 +196,24 @@ if __name__ == "__main__":
     # Create and setup environment
     if planner == "RRT":
         print(f"Get Position from ID: {get_position_from_id(goal_id[0])[0]}")
+        goal_positions = [get_position_from_id(goal_id[0])[0], get_position_from_id(goal_id[1])[0], get_position_from_id(goal_id[2])[0], get_position_from_id(goal_id[3])[0]]
+        print(goal_positions)
         planner = RRTManipulatorPlanner(robot_id= robot_id, collision_ids=collision_ids)
-        planner.run(get_position_from_id(goal_id[0])[0])
+        planner.run(goal_positions)
     elif planner == "RRT_Star":
         print(f"Get Position from ID: {get_position_from_id(goal_id[0])[0]}")
         planner = RRT_Star(robot_id= robot_id, collision_ids=collision_ids)
         planner.run(get_position_from_id(goal_id[0])[0], rrt_star=True)
     elif planner == "RRT_Real_Time":
         print(f"Get Position from ID: {get_position_from_id(goal_id[2])[0]}")
-        planner = RealTimeRRT(robot_id= robot_id, collision_ids=collision_ids, goal_position = get_position_from_id(goal_id[2])[0])
-        planner.run(start_position = get_end_effector_state(robot_id, 11)[0],goal_position = get_position_from_id(goal_id[2])[0])
+        goal_positions = [get_position_from_id(goal_id[0])[0], get_position_from_id(goal_id[1])[0], get_position_from_id(goal_id[2])[0], get_position_from_id(goal_id[3])[0]]
+        planner = RealTimeRRT(robot_id= robot_id, collision_ids=collision_ids)
+        planner.run(goal_positions = goal_positions)
+    elif planner == "RRT_Real_Time_Object":
+        print(f"Get Position from ID: {get_position_from_id(goal_id[2])[0]}")
+        goal_positions = [get_position_from_id(goal_id[0])[0], get_position_from_id(goal_id[1])[0], get_position_from_id(goal_id[2])[0], get_position_from_id(goal_id[3])[0]]
+        planner = RealTimeRRTObstacleAvoidance(robot_id= robot_id, collision_ids=collision_ids)
+        planner.run(goal_positions = goal_positions)
 
     # Initializing Simulation
     p.setRealTimeSimulation(0)
