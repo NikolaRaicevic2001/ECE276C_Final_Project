@@ -68,11 +68,86 @@ def wrap_joint_angles(joint_angles, joint_limits):
         wrapped_angles.append(angle)
     return np.array(wrapped_angles)
 
+def get_jacobian(robot_id, link_index):
+    """Get the Jacobian matrix for the given link."""
+    # Get the number of joints
+    num_joints = 7
+    
+    # Get current joint positions
+    joint_positions = [p.getJointState(robot_id, i)[0] for i in range(num_joints)]
+    
+    print("Jacobian Parameters:")
+    print(f"Robot ID: {robot_id}")
+    print(f"Link Index: {link_index}")
+    print(f"Joint Positions: {joint_positions}")
+
+    # Calculate Jacobian
+    linear_jacobian, angular_jacobian = p.calculateJacobian(
+        bodyUniqueId=robot_id,
+        linkIndex=link_index,
+        localPosition=[0.0, 0.0, 0.0],
+        objPositions=joint_positions,
+        objVelocities=[0.0] * len(joint_positions),
+        objAccelerations=[0.0] * len(joint_positions)
+    )
+    
+    # Combine linear and angular Jacobians
+    return np.vstack((linear_jacobian, angular_jacobian))
+
+def quaternion_difference(q1, q2):
+    """Calculate the difference between two quaternions."""
+    q1 = np.array(q1)
+    q2 = np.array(q2)
+    return np.array([
+        q1[3]*q2[0] - q1[0]*q2[3] - q1[1]*q2[2] + q1[2]*q2[1],
+        q1[3]*q2[1] + q1[0]*q2[2] - q1[1]*q2[3] - q1[2]*q2[0],
+        q1[3]*q2[2] - q1[0]*q2[1] + q1[1]*q2[0] - q1[2]*q2[3],
+        q1[3]*q2[3] + q1[0]*q2[0] + q1[1]*q2[1] + q1[2]*q2[2]
+    ])
+
+def damped_least_squares_ik(robot_id, target_position, target_orientation, joint_limits, max_iterations=100, step_size=0.1, damping=0.1):
+    """
+    Perform step-by-step IK calculation using damped least squares method.
+    """
+    num_joints = 7  # Assuming 7 DOF for the Panda robot
+    current_joint_angles = [p.getJointState(robot_id, i)[0] for i in range(num_joints)]
+    
+    for _ in range(max_iterations):
+        # Get current end effector position and orientation
+        current_pos, current_orn = p.getLinkState(robot_id, 11)[:2]
+        
+        # Calculate position and orientation error
+        pos_error = np.array(target_position) - np.array(current_pos)
+        orn_error = quaternion_difference(current_orn, target_orientation)[:3]  # Use only x, y, z components
+        total_error = np.concatenate([pos_error, orn_error])
+        
+        if np.linalg.norm(total_error) < 1e-3:
+            break  # Convergence achieved
+        
+        # Get Jacobian
+        J = get_jacobian(robot_id, 7)
+        
+        # Compute damped least squares solution
+        JTJ = np.dot(J.T, J)
+        lambda_I = damping * np.eye(num_joints)
+        inv_JTJ_plus_lambda = np.linalg.inv(JTJ + lambda_I)
+        delta_theta = np.dot(np.dot(inv_JTJ_plus_lambda, J.T), total_error)
+        
+        # Apply joint limits
+        for i in range(num_joints):
+            lower, upper = joint_limits[i]
+            current_joint_angles[i] += step_size * delta_theta[i]
+            current_joint_angles[i] = np.clip(current_joint_angles[i], lower, upper)
+        
+        # Update robot configuration
+        for i in range(num_joints):
+            p.resetJointState(robot_id, i, current_joint_angles[i])
+    
+    return current_joint_angles
+
 def inverse_kinematics(robot_id, target_position, target_orientation=None, num_attempts=5):
     """
-    Compute joint angles for a target gripper position with more diverse solutions
-    by randomizing orientations and initial joint configurations.
-    Ensures joint angles are within specified limits by wrapping them around.
+    Compute joint angles for a target gripper position using step-by-step IK.
     """
     best_solution = None
     min_error = float('inf')
@@ -87,27 +162,21 @@ def inverse_kinematics(robot_id, target_position, target_orientation=None, num_a
         # Randomize target orientation if not provided
         if target_orientation is None:
             random_target_orientation = random_orientation()
-        else:
-            random_target_orientation = target_orientation
 
         # Solve inverse kinematics
         joint_angles = p.calculateInverseKinematics(robot_id, 11, target_position, random_target_orientation)
 
-        # Wrap joint angles to stay within limits
-        wrapped_joint_angles = wrap_joint_angles(joint_angles[:7], joint_limits)
+        # Perform step-by-step IK
+        joint_angles = damped_least_squares_ik(robot_id, target_position, random_target_orientation, joint_limits)
 
-        # Set joint angles to wrapped inverse kinematics positions
-        for i in range(7):
-            p.resetJointState(robot_id, i, wrapped_joint_angles[i])
-
-        # Evaluate solution quality based on distance/error to target
-        end_effector_state = p.getLinkState(robot_id, 7)
+        # Evaluate solution quality
+        end_effector_state = p.getLinkState(robot_id, 11)
         actual_position = np.array(end_effector_state[4])  # End effector world position
         error = np.linalg.norm(np.array(target_position) - actual_position)
 
         # Update best solution if the error is smaller
         if error < min_error:
-            best_solution = wrapped_joint_angles
+            best_solution = joint_angles
             min_error = error
 
     return best_solution
