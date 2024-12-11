@@ -694,7 +694,11 @@ class RRTManipulatorPlanner:
             # Update current angles to the last configuration of the path
             current_angles = path[-1]
 
-
+        # Now execute the entire planned trajectory
+        # for path in total_path:
+        #     if path:
+        #         self.execute_path(path)
+        #         time.sleep(1)
 
     def run(self, goal_positions):
         """Main execution method"""
