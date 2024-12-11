@@ -29,6 +29,7 @@ def get_robot_info(robot_id):
         link_state = p.getLinkState(robot_id, link_idx)
         print(f"  World Position: {link_state[4]}")
         print(f"  World Orientation: {link_state[5]}")
+        print(f"  Limits: {p.getJointInfo(robot_id, link_idx)[8:10]}")
 
 ###################################
 ####### STATE FUNCTIONS ###########
@@ -55,13 +56,32 @@ def random_orientation():
     z = np.sqrt(u1) * np.cos(2 * np.pi * u3)
     return [x, y, z, w]
 
+def wrap_joint_angles(joint_angles, joint_limits):
+    """Wrap joint angles to stay within specified limits."""
+    wrapped_angles = []
+    for angle, (lower, upper) in zip(joint_angles, joint_limits):
+        range = upper - lower
+        while angle < lower:
+            angle += 2*np.pi
+        while angle > upper:
+            angle -= 2*np.pi
+        wrapped_angles.append(angle)
+    return np.array(wrapped_angles)
+
 def inverse_kinematics(robot_id, target_position, target_orientation=None, num_attempts=5):
     """
     Compute joint angles for a target gripper position with more diverse solutions
     by randomizing orientations and initial joint configurations.
+    Ensures joint angles are within specified limits by wrapping them around.
     """
     best_solution = None
     min_error = float('inf')
+
+    # Get joint limits for the panda robot
+    joint_limits = []
+    for i in range(7):
+        joint_info = p.getJointInfo(robot_id, i)
+        joint_limits.append(joint_info[8:10])
 
     for _ in range(num_attempts):
         # Randomize target orientation if not provided
@@ -73,9 +93,12 @@ def inverse_kinematics(robot_id, target_position, target_orientation=None, num_a
         # Solve inverse kinematics
         joint_angles = p.calculateInverseKinematics(robot_id, 11, target_position, random_target_orientation)
 
-        # Set joint angles to inverse kinematics positions
+        # Wrap joint angles to stay within limits
+        wrapped_joint_angles = wrap_joint_angles(joint_angles[:7], joint_limits)
+
+        # Set joint angles to wrapped inverse kinematics positions
         for i in range(7):
-            p.resetJointState(robot_id, i, joint_angles[i])
+            p.resetJointState(robot_id, i, wrapped_joint_angles[i])
 
         # Evaluate solution quality based on distance/error to target
         end_effector_state = p.getLinkState(robot_id, 7)
@@ -84,8 +107,7 @@ def inverse_kinematics(robot_id, target_position, target_orientation=None, num_a
 
         # Update best solution if the error is smaller
         if error < min_error:
-            best_solution = joint_angles
+            best_solution = wrapped_joint_angles
             min_error = error
 
-    return best_solution[:7]
-
+    return best_solution

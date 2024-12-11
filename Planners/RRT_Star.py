@@ -1,11 +1,13 @@
 from datetime import datetime
-import pybullet as p
-import numpy as np
 import pybullet_data
 import imageio
 import time
 import sys
 import os
+
+import matplotlib.pyplot as plt
+import pybullet as p
+import numpy as np
 
 # Add the path to the sys path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -81,10 +83,14 @@ class RRT_Star:
         self.q_goal = Node(q_goal)
         self.obstacle_ids = obstacle_ids
         self.robot_id = robot_id
-        self.q_limits = np.array([[-2.8973, 2.8973],[-1.7628, 1.7628],[-2.8973, 2.8973],[-3.0718, -0.0698],[-2.8973, 2.8973],[-0.0175, 3.7525],[-2.8973, 2.8973]])
+        self.q_limits = []
         self.max_iter = max_iter
         self.step_size = step_size
         self.node_list = [self.q_start]
+
+        for i in range(7):
+            joint_info = p.getJointInfo(robot_id, i)
+            self.q_limits.append(joint_info[8:10])
 
     def step(self, from_node, to_joint_angles):
         """Step from "from_node" to "to_joint_angles", that should
@@ -99,7 +105,7 @@ class RRT_Star:
             # Calculate the step size
             step = (to_joint_angles - from_node.joint_angles) / distance * self.step_size
             return Node(from_node.joint_angles + step)
-        
+
     def get_nearest_node(self, random_point):
         """Find the nearest node in the tree to a given point."""
         
@@ -118,12 +124,11 @@ class RRT_Star:
         neighbors = [n for n in self.node_list if np.linalg.norm(n.joint_angles - node.joint_angles) < radius]
         return neighbors
     
-    def cost_optimal(self, node, neighbors):
-        """Update the cost of a node based on its neighbors."""
-        # Update the cost of the node
+    def cost_optimal(self, node, neighbors, goal_weight=1.0):
+        """Update the cost of a node using a heuristic that biases towards the goal."""
         for neighbor in neighbors:
             if not check_edge_collision(self.robot_id, self.obstacle_ids, node.joint_angles, neighbor.joint_angles):
-                cost = neighbor.cost + np.linalg.norm(node.joint_angles - neighbor.joint_angles)
+                cost = neighbor.cost + np.linalg.norm(node.joint_angles - neighbor.joint_angles) + goal_weight * np.linalg.norm(node.joint_angles - self.q_goal.joint_angles)
                 if cost < node.cost:
                     node.cost = cost
                     node.parent = neighbor
@@ -137,46 +142,87 @@ class RRT_Star:
                 neighbor.parent = node
         return neighbors
 
-    def plan(self):
-        """Run the RRT* algorithm to find a path of dimension Nx3. Limit the search to only max_iter iterations."""
-            
-        # Iterate through the max number of iterations
-        for _ in range(self.max_iter):
-            # Generate a random node
-            random_point = np.random.uniform(low=[limit[0] for limit in self.q_limits], high=[limit[1] for limit in self.q_limits])
+    def plan(self, initial_goal_bias=0.3, final_goal_bias=1.0):
+        """Run the RRT* algorithm with dynamically increasing goal bias."""
+        for i in range(self.max_iter):
+            # Linearly increase goal bias over iterations
+            goal_bias = initial_goal_bias + (final_goal_bias - initial_goal_bias) * (i / self.max_iter)
+            goal_bias = min(goal_bias, 0.8) 
+
+            # Use goal bias to select the goal as the target with some probability
+            if np.random.rand() < goal_bias:
+                random_point = self.q_goal.joint_angles
+            else:
+                random_point = np.random.uniform(low=[limit[0] for limit in self.q_limits], high=[limit[1] for limit in self.q_limits]) + np.random.normal(0, 0.1, size=len(self.q_limits)) 
+
             nearest_node = self.get_nearest_node(random_point)
             new_node = self.step(nearest_node, random_point)
-            
+
             # Check for collisions
             if not check_edge_collision(self.robot_id, self.obstacle_ids, nearest_node.joint_angles, new_node.joint_angles):
-                # Add the new node to the tree
-                new_node.parent = nearest_node # Set the parent of the new node
-                new_node.cost = nearest_node.cost + np.linalg.norm(new_node.joint_angles - nearest_node.joint_angles) # Update the cost of the new node
-                neighbors = self.neighbors(new_node)  # Identify neighboring Nodes
-                new_node = self.cost_optimal(new_node, neighbors) # Choosing Optimal Parameters
-                self.node_list.append(new_node) 
+                new_node.parent = nearest_node
+                new_node.cost = nearest_node.cost + np.linalg.norm(new_node.joint_angles - nearest_node.joint_angles)
+                neighbors = self.neighbors(new_node)
+                new_node = self.cost_optimal(new_node, neighbors)
+                self.node_list.append(new_node)
 
                 # Rewire the neighbors of the new node
                 neighbors = self.rewiring(new_node, neighbors)
 
-                # Check if the goal is reached
                 if np.linalg.norm(new_node.joint_angles - self.q_goal.joint_angles) < self.step_size:
-                    self.q_goal.parent = new_node
-                    self.node_list.append(self.q_goal)
-                    break
+                    if not check_edge_collision(self.robot_id, self.obstacle_ids, new_node.joint_angles, self.q_goal.joint_angles):
+                        self.q_goal.parent = new_node
+                        self.q_goal.cost = new_node.cost + np.linalg.norm(self.q_goal.joint_angles - new_node.joint_angles)
+                        self.node_list.append(self.q_goal)
+                        break
 
         return self.node_list
 
     def get_path(self):
         """Return the path from the start node to the goal node."""
-        
-        # Run the RRT/RRT* algorithm
+        # Ensure that the plan method has been called
         self.plan()
 
-        # Get the path from the start node to the goal node
         path = []
         node = self.q_goal
         while node is not None:
             path.append(node.joint_angles)
             node = node.parent
+
+        if not np.array_equal(path[-1], self.q_start.joint_angles):
+            print("Path does not connect back to the start! Debug required.")
+            
         return path[::-1]
+
+    def visualize(self):
+        """Visualize the RRT* tree and path."""
+        plt.figure(figsize=(10, 10))
+        
+        # Plot all nodes and connections
+        for node in self.node_list:
+            if node.parent:
+                plt.plot([node.joint_angles[0], node.parent.joint_angles[0]],
+                         [node.joint_angles[1], node.parent.joint_angles[1]],
+                         'b-', alpha=0.3)  # Blue lines for connections
+        
+        # Plot all nodes
+        node_x = [node.joint_angles[0] for node in self.node_list]
+        node_y = [node.joint_angles[1] for node in self.node_list]
+        plt.scatter(node_x, node_y, c='g', s=20)  # Green dots for nodes
+        
+        # Plot start and goal
+        plt.scatter(self.q_start.joint_angles[0], self.q_start.joint_angles[1], c='g', s=100, marker='*')  # Green star for start
+        plt.scatter(self.q_goal.joint_angles[0], self.q_goal.joint_angles[1], c='r', s=100, marker='*')  # Red star for goal
+        
+        # Plot the final path
+        path = self.get_path()
+        if path:
+            path_x = [node[0] for node in path]
+            path_y = [node[1] for node in path]
+            plt.plot(path_x, path_y, 'r-', linewidth=2)  # Red line for the final path
+        
+        plt.title("RRT* Tree and Path")
+        plt.xlabel("Joint Angle 1")
+        plt.ylabel("Joint Angle 2")
+        plt.grid(True)
+        plt.show()
