@@ -64,11 +64,6 @@ def inverse_kinematics(robot_id, target_position, target_orientation=None):
     adjusted_target = np.array(target_position) - current_rot_matrix[:, 2] * 0.1
 
     # Use PyBullet's inverse kinematics solver
-    joint_angles = p.calculateInverseKinematics(
-        robot_id,
-        6,  # End-effector link index
-        adjusted_target,
-        targetOrientation=target_orientation
-    )
+    joint_angles = p.calculateInverseKinematics(robot_id, 7, adjusted_target)
 
     return joint_angles

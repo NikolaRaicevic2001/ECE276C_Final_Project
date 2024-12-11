@@ -211,7 +211,7 @@ if __name__ == "__main__":
             collision_flag = True
             while collision_flag:
                 joint_angles = np.array(inverse_kinematics(robot_id, target_position=p.getBasePositionAndOrientation(goal)[0])[0:7])
-                collision_flag = check_node_collision(robot_id=robot_id, object_ids=collision_ids, joint_position=goal_positions[0])
+                collision_flag = check_node_collision(robot_id=robot_id, object_ids=collision_ids, joint_position=joint_angles)
             goal_positions.append(joint_angles)
 
         # 7xN Path Array 
