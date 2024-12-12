@@ -194,7 +194,7 @@ if __name__ == "__main__":
     env_num = 4
 
     # planner = "RRTObstacleAvoidance"
-    planner = "RRT_Star"
+    planner = "RRTObstacleAvoidance"
 
     # Set the environment
     physics_client, collision_ids, goal_id, robot_id, home_positions = environment_setup(env_num=env_num)
@@ -259,23 +259,102 @@ if __name__ == "__main__":
         planner.run(goal_positions = goal_positions)
 
     elif planner == "RRTObstacleAvoidance":
-        path_saved = np.array([goal_positions[0]]) # Start at the first goal position
+        path_saved = np.array([goal_positions[0]])  # Start at the first goal position
+
+        # Set up PID gains for joint position control
+        p_gain = 0.5
+        i_gain = 0.01
+        d_gain = 0.1
+
         for i in range(1, len(goal_positions)):
-            print(f"\nRunning RRT Star wih Object avoidance Motion Planner for goal position {i}")
-            print(f"Start position: {np.round(goal_positions[i-1],5)}")
-            print(f"Goal position: {np.round(goal_positions[i],5)}")
+            print(f"\nRunning RRT Star with Object Avoidance Motion Planner for goal position {i}")
+            print(f"Start position: {np.round(goal_positions[i-1], 5)}")
+            print(f"Goal position: {np.round(goal_positions[i], 5)}")
 
             # Initialize the RRT planner
-            rrt_oa = RealTimeRRT_ObstacleAvoidance(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=robot_id, obstacle_ids=collision_ids, max_iter=2000, step_size=0.75)
+            rrt_oa = RealTimeRRT_ObstacleAvoidance(
+                q_start=goal_positions[i-1],
+                q_goal=goal_positions[i],
+                robot_id=robot_id,
+                obstacle_ids=collision_ids,
+                max_iter=2000,
+                step_size=0.75
+            )
 
-            # Run the RRT planner
-            path_saved = np.concatenate((path_saved, rrt_oa.get_path()), axis=0)
+            # Real-time path following and replanning
+            current_goal_index = i
+            current_path, some_path = rrt_oa.get_path()
+
+            print(some_path)
+            path_index = 0
+            print("LMAO")
+            while path_index < len(some_path) - 1:
+
+                # Get current joint states
+                current_joint_states = p.getJointStates(robot_id, range(7))
+                current_joint_positions = [state[0] for state in current_joint_states]
+
+                # Check current robot state and obstacle positions
+                current_robot_pos = rrt_oa.forward_kinematics(current_joint_positions)
+
+                # Check for obstacle proximity or collision
+                is_obstacle_near, nearby_obstacles = rrt_oa.check_obstacle_proximity(current_robot_pos)
+
+                if is_obstacle_near:
+                    print(f"Obstacles detected near current position. Replanning...")
+                    # Replan the path
+                    rrt_oa = RealTimeRRT_ObstacleAvoidance(
+                        q_start=current_joint_positions,
+                        q_goal=goal_positions[current_goal_index],
+                        robot_id=robot_id,
+                        obstacle_ids=collision_ids,
+                        max_iter=2000,
+                        step_size=0.75
+                    )
+                    current_path, some_path = rrt_oa.get_path()
+                    path_index = 0
+
+                # Get next target joint positions
+                target_joint_positions = some_path[path_index + 1]
+
+                # Implement PID control for joint position tracking
+                joint_commands = []
+                for j in range(7):
+                    # Calculate error
+                    error = target_joint_positions[j] - current_joint_positions[j]
+
+                    # PID control calculation
+                    # You might want to store previous errors and integrate for more precise control
+                    command = p_gain * error
+
+                    joint_commands.append(command)
+
+                # Apply joint position control
+                p.setJointMotorControlArray(
+                    bodyIndex=robot_id,
+                    jointIndices=range(7),
+                    controlMode=p.POSITION_CONTROL,
+                    targetPositions=target_joint_positions,
+                    positionGains=[p_gain]*7,
+                    velocityGains=[d_gain]*7
+                )
+
+                # Step simulation
+                p.stepSimulation()
+
+                # Check if we're close enough to the target joint positions
+                if np.allclose(current_joint_positions, target_joint_positions, atol=0.05):
+                    path_index += 1
+
+                # Visualize current path and iteration
+                rrt_oa.visualize(goal_index=i)
+
+                # Add a small delay to control simulation speed
+                time.sleep(0.05)
+
+            # Accumulate path
+            path_saved = np.concatenate((path_saved, some_path), axis=0)
             print(path_saved)
-
-            # Visualize the path
-            rrt_oa.visualize(goal_index = i)
-
-        print(f"Path saved: {np.round(path_saved,5)}")
 
     # Initializing Simulation
     p.setRealTimeSimulation(0)

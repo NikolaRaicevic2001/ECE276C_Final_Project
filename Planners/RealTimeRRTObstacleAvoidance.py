@@ -279,6 +279,10 @@ class RealTimeRRT_ObstacleAvoidance:
         """Return the path from the start node to the goal node."""
 
         self.plan()
+        # print(self.node_list)
+        some_path = []
+        for no in self.node_list:
+            some_path.append(no.joint_angles)
 
         node = self.q_goal
         while node is not None:
@@ -288,7 +292,7 @@ class RealTimeRRT_ObstacleAvoidance:
         if not np.array_equal(self.path[-1], self.q_start.joint_angles):
             print("Path does not connect back to the start! Debug required.")
 
-        return self.path[::-1]
+        return self.path[::-1], some_path[::-1]
 
     def visualize(self, goal_index=None):
         """Visualize the RRT* tree and path."""
