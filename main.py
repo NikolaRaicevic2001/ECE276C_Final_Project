@@ -183,7 +183,7 @@ def environment_update(collision_ids, dt = 1/240, velocity = 0.5, flag_01 = 1, f
     
 if __name__ == "__main__":
     # Configuring parameters
-    duration = 300; fps = 30
+    duration = 1000; fps = 30
     time_steps = int(duration * fps); dt = 1.0 / fps
     
     point_cloud_count = 300
@@ -194,6 +194,29 @@ if __name__ == "__main__":
     # Set the environment
     physics_client, collision_ids, goal_id, robot_id, home_positions = environment_setup(env_num=env_num)
 
+    # Get the goal position
+    # goal_positions = [home_positions]
+    # for goal in goal_id:
+    #     collision_flag = True
+    #     while collision_flag:
+    #         joint_angles = np.array(inverse_kinematics(robot_id, target_position=p.getBasePositionAndOrientation(goal)[0]))
+    #         collision_flag = check_node_collision(robot_id=robot_id, object_ids=collision_ids, joint_position=joint_angles)
+    #     goal_positions.append(joint_angles)
+
+    # Set Goal Positions Manually
+    goal_positions = [[0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]]
+    # goal_positions.append([ 1.97188, 1.07719, 2.95013, -2.52129, 2.89555, 3.79802, -2.05033])
+    # goal_positions.append([ 2.69055, 1.76893, 2.18599, -2.28916, 2.47068, 3.64461, -0.79935])
+    # goal_positions.append([ 2.72501, -1.37319, 1.40152, -1.32626, -0.15509, 1.31711, -0.98499])
+    goal_positions.append([-0.08591, 1.8026, -2.12464, -1.71271, 0.10433, 1.1911, -0.8379])
+
+    # Move to all goal positions to check for collisions
+    for i,goal_position in enumerate(goal_positions):
+        print(f"Goal position {i}: {np.round(goal_position, 5)}")
+        for joint_index, joint_pos in enumerate(goal_positions[i]):
+            p.resetJointState(robot_id, joint_index, joint_pos)
+        time.sleep(2.0)
+
     # Create and setup environment
     if planner == "RRT":
         print(f"Get Position from ID: {get_position_from_id(goal_id[0])[0]}")
@@ -202,35 +225,22 @@ if __name__ == "__main__":
         planner = RRTManipulatorPlanner(robot_id= robot_id, collision_ids=collision_ids)
         planner.run(goal_positions)
     elif planner == "RRT_Star":
-        goal_positions = [home_positions]
-        for goal in goal_id:
-            collision_flag = True
-            while collision_flag:
-                joint_angles = np.array(inverse_kinematics(robot_id, target_position=p.getBasePositionAndOrientation(goal)[0]))
-                collision_flag = check_node_collision(robot_id=robot_id, object_ids=collision_ids, joint_position=joint_angles)
-            goal_positions.append(joint_angles)
-
-        # 7xN Path Array 
         path_saved = np.array([goal_positions[0]]) # Start at the first goal position
-
-        # Move to all goal positions to check for collisions
-        for i,goal_position in enumerate(goal_positions):
-            print(f"Goal position {i}: {np.round(goal_position, 5)}")
-            for joint_index, joint_pos in enumerate(goal_positions[i]):
-                p.resetJointState(robot_id, joint_index, joint_pos)
-            time.sleep(2.0)
-
         for i in range(1, len(goal_positions)):
-            print(f"Running RRT Star Motion Planner for goal position {i}")
-            print(f"Goal positions: {goal_positions[i-1]}, {goal_positions[i]}")
+            print(f"\nRunning RRT Star Motion Planner for goal position {i}")
+            print(f"Start position: {np.round(goal_positions[i-1],5)}")
+            print(f"Goal position: {np.round(goal_positions[i],5)}")
 
             # Initialize the RRT planner
-            rrt = RRT_Star(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=robot_id, obstacle_ids=collision_ids, max_iter=1000, step_size=0.5)
+            rrt = RRT_Star(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=robot_id, obstacle_ids=collision_ids, max_iter=2000, step_size=0.75)
 
             # Run the RRT planner
             path_saved = np.concatenate((path_saved, rrt.get_path()), axis=0)
 
-        print(f"Path saved: {path_saved}")
+            # Visualize the path
+            rrt.visualize(goal_index = i)
+
+        print(f"Path saved: {np.round(path_saved,5)}")
 
     elif planner == "RRT_Real_Time":
         print(f"Get Position from ID: {get_position_from_id(goal_id[2])[0]}")
@@ -272,38 +282,38 @@ if __name__ == "__main__":
 
             flag_01, flag_02, flag_03 = environment_update(collision_ids, dt=dt, flag_01=flag_01, flag_02=flag_02, flag_03=flag_03)
 
-        # # Obtain Point Cloud
-        # # p.removeAllUserDebugItems()
-        # point_cloud, wRc, wtc = get_point_cloud(camera_position=[0.0, -1.5, 2.0], camera_target=[0.0, -0.2, 0.5], img_flag=True)
-        # # point_cloud_01, wRc_01, wtc_01 = get_point_cloud(camera_position=[-0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
-        # # point_cloud_02, wRc_02, wtc_02 = get_point_cloud(camera_position=[0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
-        # # point_cloud_03, wRc_03, wtc_03 = get_point_cloud(camera_position=[-0.7, 1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
-        # # point_cloud = np.concatenate((point_cloud_01, point_cloud_02, point_cloud_03), axis=0)
-
-        # # If a previous debug item exists, remove it
-        # if point_cloud_debug_id is not None and step%5 == 0:
-        #     for point_cloud_debug_id in point_cloud_debug_id_list:
-        #         p.removeUserDebugItem(point_cloud_debug_id)
-        #     point_cloud_debug_id_list = []
-
-        # Capture frames
         if step%100 == 0:
+            # Obtain Point Cloud
+            # p.removeAllUserDebugItems()
+            point_cloud, wRc, wtc = get_point_cloud(camera_position=[0.0, -1.5, 2.0], camera_target=[0.0, -0.2, 0.5], img_flag=True)
+            # point_cloud_01, wRc_01, wtc_01 = get_point_cloud(camera_position=[-0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
+            # point_cloud_02, wRc_02, wtc_02 = get_point_cloud(camera_position=[0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
+            # point_cloud_03, wRc_03, wtc_03 = get_point_cloud(camera_position=[-0.7, 1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
+            # point_cloud = np.concatenate((point_cloud_01, point_cloud_02, point_cloud_03), axis=0)
+
+            # If a previous debug item exists, remove it
+            if point_cloud_debug_id is not None and step%200 == 0:
+                for point_cloud_debug_id in point_cloud_debug_id_list:
+                    p.removeUserDebugItem(point_cloud_debug_id)
+                point_cloud_debug_id_list = []
+
+            # Display Downsampled Point Cloud
+            if len(point_cloud) > 0:
+                if len(point_cloud) > point_cloud_count:
+                    downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
+                    point_cloud_debug_id = p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
+                    point_cloud_debug_id_list.append(point_cloud_debug_id)
+
+            # Draw the camera
+            if step == 0:
+                draw_camera_frame(wtc, wRc)
+                # draw_camera_frame(wtc_01, wRc_01)
+                # draw_camera_frame(wtc_02, wRc_02)
+                # draw_camera_frame(wtc_03, wRc_03)
+
+            # Capture frames
             frame = p.getCameraImage(1280, 960)
             frames_list.append(frame[2])
-
-        # # Display Downsampled Point Cloud
-        # if len(point_cloud) > 0:
-        #     if len(point_cloud) > point_cloud_count:
-        #         downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
-        #         point_cloud_debug_id = p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
-        #         point_cloud_debug_id_list.append(point_cloud_debug_id)
-
-        # # Draw the camera
-        # if step == 0:
-        #     draw_camera_frame(wtc, wRc)
-        #     # draw_camera_frame(wtc_01, wRc_01)
-        #     # draw_camera_frame(wtc_02, wRc_02)
-        #     # draw_camera_frame(wtc_03, wRc_03)
 
         # Get current joint positions
         goal_positions_waypoint = [p.getJointState(robot_id, i)[0] for i in range(7)]
@@ -335,7 +345,7 @@ if __name__ == "__main__":
             for frame in frames_list:
                 writer.append_data(frame)
     if planner == "RRT_Star":
-        with imageio.get_writer('./Video_Demos/RRT_Star_03.gif', mode='I', duration=duration/len(frames_list)) as writer:
+        with imageio.get_writer('./Video_Demos/RRT_Star_09.gif', mode='I', duration=duration/len(frames_list)) as writer:
             for frame in frames_list:
                 writer.append_data(frame)
     if planner == "RRT_Real_Time":
