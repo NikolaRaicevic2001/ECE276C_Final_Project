@@ -215,7 +215,7 @@ if __name__ == "__main__":
 
         # Move to all goal positions to check for collisions
         for i,goal_position in enumerate(goal_positions):
-            print(f"Goal position {i}: {goal_position}")
+            print(f"Goal position {i}: {np.round(goal_position, 5)}")
             for joint_index, joint_pos in enumerate(goal_positions[i]):
                 p.resetJointState(robot_id, joint_index, joint_pos)
             time.sleep(2.0)
@@ -305,7 +305,7 @@ if __name__ == "__main__":
         #     # draw_camera_frame(wtc_02, wRc_02)
         #     # draw_camera_frame(wtc_03, wRc_03)
 
-        #get current joint positions
+        # Get current joint positions
         goal_positions_waypoint = [p.getJointState(robot_id, i)[0] for i in range(7)]
         # calculate the displacement to reach the next waypoint
         displacement_to_waypoint = waypoint-goal_positions_waypoint

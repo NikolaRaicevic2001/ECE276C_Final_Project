@@ -69,18 +69,10 @@ def wrap_joint_angles(joint_angles, joint_limits):
         wrapped_angles.append(angle)
     return np.array(wrapped_angles)
 
-def get_jacobian(robot_id, link_index):
+def get_jacobian(robot_id, link_index, movable_joints):
     """Get the Jacobian matrix for the given link."""
-    # Get the number of joints
-    num_joints = 7
-    
-    # Get current joint positions
-    joint_positions = [p.getJointState(robot_id, i)[0] for i in range(num_joints)]
-    
-    print("Jacobian Parameters:")
-    print(f"Robot ID: {robot_id}")
-    print(f"Link Index: {link_index}")
-    print(f"Joint Positions: {joint_positions}")
+    # Get current joint positions for movable joints
+    joint_positions = [p.getJointState(robot_id, i)[0] for i in movable_joints]
 
     # Calculate Jacobian
     linear_jacobian, angular_jacobian = p.calculateJacobian(
@@ -95,6 +87,7 @@ def get_jacobian(robot_id, link_index):
     # Combine linear and angular Jacobians
     return np.vstack((linear_jacobian, angular_jacobian))
 
+
 def quaternion_difference(q1, q2):
     """Calculate the difference between two quaternions."""
     q1 = np.array(q1)
@@ -106,12 +99,12 @@ def quaternion_difference(q1, q2):
         q1[3]*q2[3] + q1[0]*q2[0] + q1[1]*q2[1] + q1[2]*q2[2]
     ])
 
-def damped_least_squares_ik(robot_id, target_position, target_orientation, joint_limits, max_iterations=100, step_size=0.1, damping=0.1):
+def damped_least_squares_ik(robot_id, target_position, target_orientation, joint_limits, movable_joints, max_iterations=100, step_size=0.1, damping=0.1):
     """
     Perform step-by-step IK calculation using damped least squares method.
     """
-    num_joints = 7  # Assuming 7 DOF for the Panda robot
-    current_joint_angles = [p.getJointState(robot_id, i)[0] for i in range(num_joints)]
+    num_joints = len(movable_joints)
+    current_joint_angles = [p.getJointState(robot_id, i)[0] for i in movable_joints]
     
     for _ in range(max_iterations):
         # Get current end effector position and orientation
@@ -126,7 +119,7 @@ def damped_least_squares_ik(robot_id, target_position, target_orientation, joint
             break  # Convergence achieved
         
         # Get Jacobian
-        J = get_jacobian(robot_id, 7)
+        J = get_jacobian(robot_id, 7, movable_joints)
         
         # Compute damped least squares solution
         JTJ = np.dot(J.T, J)
@@ -153,9 +146,13 @@ def inverse_kinematics(robot_id, target_position, target_orientation=None, num_a
     best_solution = None
     min_error = float('inf')
 
+    # Identify movable joints
+    num_joints = p.getNumJoints(robot_id)
+    movable_joints = [i for i in range(num_joints) if p.getJointInfo(robot_id, i)[2] != p.JOINT_FIXED]
+
     # Get joint limits for the panda robot
     joint_limits = []
-    for i in range(7):
+    for i in movable_joints:
         joint_info = p.getJointInfo(robot_id, i)
         joint_limits.append(joint_info[8:10])
 
@@ -164,11 +161,11 @@ def inverse_kinematics(robot_id, target_position, target_orientation=None, num_a
         if target_orientation is None:
             random_target_orientation = random_orientation()
 
-        # Solve inverse kinematics
-        joint_angles = p.calculateInverseKinematics(robot_id, 11, target_position, random_target_orientation)
+        # # Solve inverse kinematics
+        # joint_angles = p.calculateInverseKinematics(robot_id, 11, target_position, random_target_orientation)
 
         # Perform step-by-step IK
-        joint_angles = damped_least_squares_ik(robot_id, target_position, random_target_orientation, joint_limits)
+        joint_angles = damped_least_squares_ik(robot_id, target_position, random_target_orientation, joint_limits, movable_joints)
 
         # Evaluate solution quality
         end_effector_state = p.getLinkState(robot_id, 11)
@@ -180,4 +177,4 @@ def inverse_kinematics(robot_id, target_position, target_orientation=None, num_a
             best_solution = joint_angles
             min_error = error
 
-    return best_solution
+    return best_solution[:7]  # Return only the arm joint angles
