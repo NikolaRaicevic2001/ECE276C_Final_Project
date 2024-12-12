@@ -6,6 +6,7 @@ import numpy as np
 ###################################
 ####### INFO FUNCTIONS ############
 ###################################
+###################################
 def print_robot_info(panda_id, num_joints: int):
     """Print information about the robot"""
     print(f"Loaded Panda robot with {num_joints} joints")
