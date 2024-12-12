@@ -87,6 +87,7 @@ class RRT_Star:
         self.max_iter = max_iter
         self.step_size = step_size
         self.node_list = [self.q_start]
+        self.path = []
 
         for i in range(7):
             joint_info = p.getJointInfo(robot_id, i)
@@ -142,18 +143,47 @@ class RRT_Star:
                 neighbor.parent = node
         return neighbors
 
-    def plan(self, initial_goal_bias=0.3, final_goal_bias=1.0):
+    def variable_goal_bias(self, current_iter, max_iter, initial_bias, final_bias):
+        alpha = 2.0  # Form factor
+        P = initial_bias + (final_bias - initial_bias) * (1 - np.exp(-alpha * current_iter / max_iter))
+        return min(P, 0.75)  # Cap at 0.75 to ensure some exploration
+
+    def informed_sample(self, c_best):
+        if c_best < float('inf'):
+            c_min = np.linalg.norm(self.q_start.joint_angles - self.q_goal.joint_angles)
+            x_center = (self.q_start.joint_angles + self.q_goal.joint_angles) / 2
+            C = self.get_rotation_to_world(self.q_start.joint_angles, self.q_goal.joint_angles)
+            r = np.array([(c_best**2 - c_min**2) / 4] + [0] * (len(self.q_limits) - 1))
+            L = np.diag(r)
+            x_ball = self.sample_unit_ball()
+            return C @ L @ x_ball + x_center
+        else:
+            return np.random.uniform(low=[limit[0] for limit in self.q_limits], high=[limit[1] for limit in self.q_limits]) + np.random.normal(0, 0.1, size=len(self.q_limits)) 
+
+    def get_rotation_to_world(self, start, goal):
+        a1 = np.array(goal) - np.array(start)
+        a1_unit = a1 / np.linalg.norm(a1)
+        M = np.eye(len(self.q_limits))
+        M[:, 0] = a1_unit
+        return M
+
+    def sample_unit_ball(self):
+        while True:
+            x = np.random.uniform(-1, 1, size=len(self.q_limits))
+            if np.linalg.norm(x) <= 1:
+                return x
+
+    def plan(self, initial_goal_bias=0.1, final_goal_bias=1.0, c_best = float('inf')):
         """Run the RRT* algorithm with dynamically increasing goal bias."""
         for i in range(self.max_iter):
-            # Linearly increase goal bias over iterations
-            goal_bias = initial_goal_bias + (final_goal_bias - initial_goal_bias) * (i / self.max_iter)
-            goal_bias = min(goal_bias, 0.8) 
+            # Variable increase goal bias over iterations
+            goal_bias = self.variable_goal_bias(i, self.max_iter, initial_goal_bias, final_goal_bias)
 
             # Use goal bias to select the goal as the target with some probability
             if np.random.rand() < goal_bias:
                 random_point = self.q_goal.joint_angles
             else:
-                random_point = np.random.uniform(low=[limit[0] for limit in self.q_limits], high=[limit[1] for limit in self.q_limits]) + np.random.normal(0, 0.1, size=len(self.q_limits)) 
+                random_point = self.informed_sample(c_best)
 
             nearest_node = self.get_nearest_node(random_point)
             new_node = self.step(nearest_node, random_point)
@@ -180,21 +210,20 @@ class RRT_Star:
 
     def get_path(self):
         """Return the path from the start node to the goal node."""
-        # Ensure that the plan method has been called
+
         self.plan()
 
-        path = []
         node = self.q_goal
         while node is not None:
-            path.append(node.joint_angles)
+            self.path.append(node.joint_angles)
             node = node.parent
 
-        if not np.array_equal(path[-1], self.q_start.joint_angles):
+        if not np.array_equal(self.path[-1], self.q_start.joint_angles):
             print("Path does not connect back to the start! Debug required.")
             
-        return path[::-1]
+        return self.path[::-1]
 
-    def visualize(self):
+    def visualize(self, goal_index=None):
         """Visualize the RRT* tree and path."""
         plt.figure(figsize=(10, 10))
         
@@ -211,18 +240,17 @@ class RRT_Star:
         plt.scatter(node_x, node_y, c='g', s=20)  # Green dots for nodes
         
         # Plot start and goal
-        plt.scatter(self.q_start.joint_angles[0], self.q_start.joint_angles[1], c='g', s=100, marker='*')  # Green star for start
-        plt.scatter(self.q_goal.joint_angles[0], self.q_goal.joint_angles[1], c='r', s=100, marker='*')  # Red star for goal
+        plt.scatter(self.q_start.joint_angles[0], self.q_start.joint_angles[1], c='b', s=150, marker='*')  # Blue star for start
+        plt.scatter(self.q_goal.joint_angles[0], self.q_goal.joint_angles[1], c='r', s=150, marker='*')  # Red star for goal
         
         # Plot the final path
-        path = self.get_path()
-        if path:
-            path_x = [node[0] for node in path]
-            path_y = [node[1] for node in path]
+        if self.path:
+            path_x = [node[0] for node in self.path]
+            path_y = [node[1] for node in self.path]
             plt.plot(path_x, path_y, 'r-', linewidth=2)  # Red line for the final path
         
         plt.title("RRT* Tree and Path")
         plt.xlabel("Joint Angle 1")
         plt.ylabel("Joint Angle 2")
         plt.grid(True)
-        plt.show()
+        plt.savefig(f"Visualizations/RRT_Star_09_{goal_index:02d}.png")
