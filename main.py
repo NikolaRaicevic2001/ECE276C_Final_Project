@@ -7,8 +7,8 @@ import os
 
 from datetime import datetime
 
-from Planners.RRT_Star import RRT,check_node_collision, check_edge_collision
-from Planners.RRT import RRTManipulatorPlanner, RealTimeRRT
+from Planners.RRT import RRT,check_node_collision, check_edge_collision
+from Planners.RRT_Real_Time import RRTManipulatorPlanner, RealTimeRRT
 from point_cloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
 from utils import *
 
@@ -100,12 +100,12 @@ def environment_setup(env_num = 1):
                          spherical_joint_limit_id]
 
         # Add Goal IDs
-        sphere_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=0.03, rgbaColor=[0, 0, 1, 1])  # Blue sphere
+        sphere_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=0.03, rgbaColor=[0, 0, 1, 1]) # Create a visual shape for the sphere (Blue Sphere)
         goal_id_1 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0, -0.28, 0.5])
         goal_id_2 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[-0.12, -0.4, 0.5])
         goal_id_3 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0, -0.52, 0.5])   
         goal_id_4 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0.12, -0.4, 0.5])
-        goal_id = [goal_id_1, goal_id_2, goal_id_3, goal_id_4]
+        goal_id = [goal_id_1, goal_id_2, goal_id_4]
 
     # Environment 04 - Construction Site Dynamic
     if env_num == 4:
@@ -113,21 +113,21 @@ def environment_setup(env_num = 1):
         ground_id = p.loadURDF("plane.urdf")
         robot_id = p.loadURDF("franka_panda/panda.urdf", [0.0, 0.0, 0.0], useFixedBase=True)
         # Add Collision Objects
-        r2d2_id_1 = p.loadURDF("r2d2.urdf", [-0.4, -0.4, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi/2]), globalScaling=0.5)
-        r2d2_id_2 = p.loadURDF("r2d2.urdf", [0.4, -0.4, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, -np.pi/2]), globalScaling=0.5)
-        r2d2_id_3 = p.loadURDF("r2d2.urdf", [0.0, -0.8, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi]), globalScaling=0.5)
+        r2d2_id_1 = p.loadURDF("r2d2.urdf", [-0.6, -0.4, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi/2]), globalScaling=0.5)
+        r2d2_id_2 = p.loadURDF("r2d2.urdf", [0.6, -0.4, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, -np.pi/2]), globalScaling=0.5)
+        r2d2_id_3 = p.loadURDF("r2d2.urdf", [0.0, -1.0, 0.2], baseOrientation=p.getQuaternionFromEuler([0, 0, np.pi]), globalScaling=0.5)
         block_id = p.loadURDF("block.urdf", [0.0, -0.4, 0.5], baseOrientation=p.getQuaternionFromEuler([0, np.pi/2, 0]), globalScaling=10.0, useFixedBase=True)
         goal_id = 0
         # Add Collision Objects
         collision_ids = [ground_id, r2d2_id_1, r2d2_id_2, r2d2_id_3, 
                          block_id]
         # Add Goal IDs
-        sphere_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=0.01, rgbaColor=[0, 0, 1, 1])               # Create a visual shape for the sphere (Blue Sphere)
-        goal_id_1 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.275, 0.3], globalScaling = 0.5)       # Create a multi-body for the sphere 1
-        goal_id_2 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[-0.15, -0.4, 0.3], globalScaling = 0.5)    # Create a multi-body for the sphere 2
-        goal_id_3 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.525, 0.3], globalScaling = 0.5)       # Create a multi-body for the sphere 3
-        goal_id_4 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0.15, -0.4, 0.3], globalScaling = 0.5)     # Create a multi-body for the sphere 4
-        goal_id = [goal_id_1, goal_id_2, goal_id_3, goal_id_4]
+        sphere_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=0.03, rgbaColor=[0, 0, 1, 1]) # Create a visual shape for the sphere (Blue Sphere)
+        goal_id_1 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0, -0.28, 0.3])
+        goal_id_2 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[-0.12, -0.4, 0.3])
+        goal_id_3 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0, -0.52, 0.3])   
+        goal_id_4 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape, basePosition=[0.12, -0.4, 0.3])
+        goal_id = [goal_id_1, goal_id_4]
 
     # Reset Panda's position to Home Position
     home_positions = [0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]
@@ -142,7 +142,7 @@ def environment_setup(env_num = 1):
 
     return physics_client, collision_ids, goal_id, robot_id, home_positions
 
-def environment_update(collision_ids, dt = 1/240, velocity = 0.5, flag_01 = 1, flag_02 = 1, flag_03 = 1):
+def environment_update(collision_ids, dt = 1/240, velocity = 0.1, flag_01 = 1, flag_02 = 1, flag_03 = 1):
     ''' Update the environment to make R2D2s move back and forth'''
     # Moving R2D2 back and forth
     for i in range(3):
@@ -156,7 +156,7 @@ def environment_update(collision_ids, dt = 1/240, velocity = 0.5, flag_01 = 1, f
 
             if pos[0] < -1.2:
                 flag_01 = 1
-            elif pos[0] > -0.4:
+            elif pos[0] > -0.35:
                 flag_01 = 0
 
         if i == 1:
@@ -165,7 +165,7 @@ def environment_update(collision_ids, dt = 1/240, velocity = 0.5, flag_01 = 1, f
             else:
                 p.resetBasePositionAndOrientation(collision_ids[i+1], pos+np.array([-dt*velocity,0, 0]), ori)
 
-            if pos[0] < 0.4:
+            if pos[0] < 0.35:
                 flag_02 = 1
             elif pos[0] > 1.2:
                 flag_02 = 0
@@ -178,21 +178,21 @@ def environment_update(collision_ids, dt = 1/240, velocity = 0.5, flag_01 = 1, f
 
             if pos[1] < -1.6:
                 flag_03 = 1
-            elif pos[1] > -0.8:
+            elif pos[1] > -0.75:
                 flag_03 = 0
 
     return flag_01, flag_02, flag_03
     
 if __name__ == "__main__":
     # Configuring parameters
-    duration = 1000; fps = 30
+    duration = 500; fps = 30
     time_steps = int(duration * fps); dt = 1.0 / fps
     
     # Simulation Parameters
     point_cloud_count = 300
     env_num = 3
     planner = "RRT"
-    trial = 1
+    trial = 3
 
     # Set the environment
     physics_client, collision_ids, goal_id, robot_id, home_positions = environment_setup(env_num=env_num)
@@ -206,13 +206,6 @@ if __name__ == "__main__":
             collision_flag = check_node_collision(robot_id=robot_id, object_ids=collision_ids, joint_position=joint_angles)
         goal_positions.append(joint_angles)
 
-    # Set Goal Positions Manually
-    # goal_positions = [[0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]]
-    # goal_positions.append([-0.65549, -1.30695, -0.4486, -2.49946, -0.56846, 1.58664, 1.44348])
-    # goal_positions.append([0.01681, -1.47467, -1.19143, -1.64938, -0.03284, 1.0331, 1.12646])
-    # goal_positions.append([0.7525, -1.40687, -1.62129, -1.06531, 0.62093, 0.7293, -0.17201])
-    # goal_positions.append([0.16114, -0.56954, -0.70797, -2.31241, -1.41054, 1.06115, -2.65308])
-
     # Move to all goal positions to check for collisions
     for i,goal_position in enumerate(goal_positions):
         print(f"Goal position {i}: {np.round(goal_position, 5)}")
@@ -224,7 +217,7 @@ if __name__ == "__main__":
     if planner == "RRT":
         path_saved = np.array([goal_positions[0]]) # Start at the first goal position
         for i in range(1, len(goal_positions)):
-            print(f"\nRunning RRT Motion Planner for goal position {i}")
+            print(f"\nRunning RRT Motion Planner Trial {trial:02d} for goal position {i}")
             print(f"Start position: {np.round(goal_positions[i-1],5)}")
             print(f"Goal position: {np.round(goal_positions[i],5)}")
 
@@ -235,24 +228,24 @@ if __name__ == "__main__":
             path_saved = np.concatenate((path_saved, rrt.get_path()), axis=0)
 
             # Visualize the path
-            rrt.visualize(goal_index = i, planner=planner, trial = trial)
+            rrt.visualize(goal_index = i, planner=planner, trial = trial, env_num=env_num)
 
         print(f"Path saved: {np.round(path_saved,5)}")
     elif planner == "RRT_Star":
         path_saved = np.array([goal_positions[0]]) # Start at the first goal position
         for i in range(1, len(goal_positions)):
-            print(f"\nRunning RRT Star Motion Planner for goal position {i}")
+            print(f"\nRunning RRT Star Motion Planner Trial {trial:02d} for goal position {i}")
             print(f"Start position: {np.round(goal_positions[i-1],5)}")
             print(f"Goal position: {np.round(goal_positions[i],5)}")
 
-            # Initialize the RRT planner
+            # Initialize the RRT Star planner
             rrt = RRT(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=robot_id, obstacle_ids=collision_ids, max_iter=2000, step_size=0.75)
 
-            # Run the RRT planner
+            # Run the RRT Star planner
             path_saved = np.concatenate((path_saved, rrt.get_path()), axis=0)
 
             # Visualize the path
-            rrt.visualize(goal_index = i, planner=planner, trial = trial)
+            rrt.visualize(goal_index = i, planner=planner, trial = trial, env_num=env_num)
 
         print(f"Path saved: {np.round(path_saved,5)}")
 
@@ -268,7 +261,7 @@ if __name__ == "__main__":
     point_cloud_debug_id = None
     point_cloud_debug_id_list = []
     frames_list = []
-    max_displacement = 0.05
+    max_displacement = 0.02
 
     # Convert path_saved to an iterator if it's not already
     path_iterator = iter(path_saved) if not hasattr(path_saved, '__next__') else path_saved
@@ -290,34 +283,34 @@ if __name__ == "__main__":
 
             flag_01, flag_02, flag_03 = environment_update(collision_ids, dt=dt, flag_01=flag_01, flag_02=flag_02, flag_03=flag_03)
 
-        if step%100 == 0:
-            # Obtain Point Cloud
-            # p.removeAllUserDebugItems()
-            point_cloud, wRc, wtc = get_point_cloud(camera_position=[0.0, -1.5, 2.0], camera_target=[0.0, -0.2, 0.5], img_flag=True)
-            # point_cloud_01, wRc_01, wtc_01 = get_point_cloud(camera_position=[-0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
-            # point_cloud_02, wRc_02, wtc_02 = get_point_cloud(camera_position=[0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
-            # point_cloud_03, wRc_03, wtc_03 = get_point_cloud(camera_position=[-0.7, 1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
-            # point_cloud = np.concatenate((point_cloud_01, point_cloud_02, point_cloud_03), axis=0)
+        if step%30 == 0:
+            # # Obtain Point Cloud
+            # # p.removeAllUserDebugItems()
+            # point_cloud, wRc, wtc = get_point_cloud(camera_position=[0.0, -1.5, 2.0], camera_target=[0.0, -0.2, 0.5], img_flag=True)
+            # # point_cloud_01, wRc_01, wtc_01 = get_point_cloud(camera_position=[-0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
+            # # point_cloud_02, wRc_02, wtc_02 = get_point_cloud(camera_position=[0.7, -1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
+            # # point_cloud_03, wRc_03, wtc_03 = get_point_cloud(camera_position=[-0.7, 1.2, 1.2], camera_target=[0.0, -0.2, 0.5], img_flag=False)
+            # # point_cloud = np.concatenate((point_cloud_01, point_cloud_02, point_cloud_03), axis=0)
 
-            # If a previous debug item exists, remove it
-            if point_cloud_debug_id is not None and step%200 == 0:
-                for point_cloud_debug_id in point_cloud_debug_id_list:
-                    p.removeUserDebugItem(point_cloud_debug_id)
-                point_cloud_debug_id_list = []
+            # # If a previous debug item exists, remove it
+            # if point_cloud_debug_id is not None and step%200 == 0:
+            #     for point_cloud_debug_id in point_cloud_debug_id_list:
+            #         p.removeUserDebugItem(point_cloud_debug_id)
+            #     point_cloud_debug_id_list = []
 
-            # Display Downsampled Point Cloud
-            if len(point_cloud) > 0:
-                if len(point_cloud) > point_cloud_count:
-                    downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
-                    point_cloud_debug_id = p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
-                    point_cloud_debug_id_list.append(point_cloud_debug_id)
+            # # Display Downsampled Point Cloud
+            # if len(point_cloud) > 0:
+            #     if len(point_cloud) > point_cloud_count:
+            #         downsampled_cloud = point_cloud[np.random.choice(len(point_cloud), point_cloud_count, replace=False)]
+            #         point_cloud_debug_id = p.addUserDebugPoints(downsampled_cloud, [[1, 0, 0]] * len(downsampled_cloud), pointSize=3)
+            #         point_cloud_debug_id_list.append(point_cloud_debug_id)
 
-            # Draw the camera
-            if step == 0:
-                draw_camera_frame(wtc, wRc)
-                # draw_camera_frame(wtc_01, wRc_01)
-                # draw_camera_frame(wtc_02, wRc_02)
-                # draw_camera_frame(wtc_03, wRc_03)
+            # # Draw the camera
+            # if step == 0:
+            #     draw_camera_frame(wtc, wRc)
+            #     # draw_camera_frame(wtc_01, wRc_01)
+            #     # draw_camera_frame(wtc_02, wRc_02)
+            #     # draw_camera_frame(wtc_03, wRc_03)
 
             # Capture frames
             frame = p.getCameraImage(1280, 960)
@@ -356,11 +349,11 @@ if __name__ == "__main__":
 
     # Save each set of frames as an animated GIF
     if planner == "RRT":
-        with imageio.get_writer('./Video_Demos/RRT.gif', mode='I', duration=duration/len(frames_list)) as writer:
+        with imageio.get_writer(f'./Video_Demos/RRT_Environment_{env_num:02d}_{trial:02d}.gif', mode='I', duration=duration/len(frames_list)) as writer:
             for frame in frames_list:
                 writer.append_data(frame)
     if planner == "RRT_Star":
-        with imageio.get_writer(f'./Video_Demos/RRT_Star_{trial:02d}.gif', mode='I', duration=duration/len(frames_list)) as writer:
+        with imageio.get_writer(f'./Video_Demos/RRT_Star_Environment_{env_num:02d}_{trial:02d}.gif', mode='I', duration=duration/len(frames_list)) as writer:
             for frame in frames_list:
                 writer.append_data(frame)
     if planner == "RRT_Real_Time":
