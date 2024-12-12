@@ -24,7 +24,7 @@ def environment_setup(env_num = 1):
     if env_num == 1:
         # Load Panda robot and its environment
         ground_id = p.loadURDF("plane.urdf")
-        robot_id = p.loadURDF("franka_panda/panda.urdf", [0, 0.3, 0.7], useFixedBase=True)
+        robot_id = p.loadURDF("franka_panda/panda.urdf", [0, 0.3, 0.67], useFixedBase=True)
         table_id = p.loadURDF(os.path.join(pybullet_data.getDataPath(), "table/table.urdf"), basePosition=[0, 0, 0], useFixedBase=True)
         # Add Collision Objects
         teddy_vhacd_id_1 = p.loadURDF("teddy_vhacd.urdf", [-0.5, 0.1, 0.62], baseOrientation=p.getQuaternionFromEuler([1.5, 0, -0.2]), globalScaling=2.0)
@@ -36,7 +36,7 @@ def environment_setup(env_num = 1):
         duck_vhacd_id_1 = p.loadURDF("duck_vhacd.urdf", [-0.1, -0.2, 0.65], baseOrientation=p.getQuaternionFromEuler([0, 0, 0.5]), globalScaling=1.5)
         duck_vhacd_id_2 = p.loadURDF("duck_vhacd.urdf", [0.4, -0.3, 0.65], baseOrientation=p.getQuaternionFromEuler([0, 0, 0.5]), globalScaling=1.5)
         duck_vhacd_id_3 = p.loadURDF("duck_vhacd.urdf", [-0.5, -0.4, 0.65], baseOrientation=p.getQuaternionFromEuler([0, 0, 0.5]), globalScaling=1.5)
-        cloth_z_up_id = p.loadURDF("cloth_z_up.urdf", [0, 1.4, 2.0], baseOrientation=p.getQuaternionFromEuler([-np.pi/2, 0, 0]), globalScaling=2.0, useFixedBase=True)
+        cloth_z_up_id = p.loadURDF("cloth_z_up.urdf", [0, 2.0, 2.0], baseOrientation=p.getQuaternionFromEuler([-np.pi/2, 0, 0]), globalScaling=2.0, useFixedBase=True)
         # Add Collision Objects
         collision_ids = [ground_id, table_id, teddy_vhacd_id_1, teddy_vhacd_id_2, teddy_vhacd_id_3, 
                          teddy_large_id_1, teddy_large_id_2, teddy_large_id_3, 
@@ -191,8 +191,8 @@ if __name__ == "__main__":
     # Simulation Parameters
     point_cloud_count = 300
     env_num = 1
-    planner = "RRT"
-    trial = 1
+    planner = "RRT_Real_Time"
+    trial = 3
 
     # Set the environment
     physics_client, collision_ids, goal_id, robot_id, home_positions = environment_setup(env_num=env_num)
