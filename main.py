@@ -7,8 +7,8 @@ import os
 
 from datetime import datetime
 
+from Planners.RRT_Real_Time import RRT_Real_Time
 from Planners.RRT import RRT,check_node_collision, check_edge_collision
-from Planners.RRT_Real_Time import RRTManipulatorPlanner, RealTimeRRT
 from point_cloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
 from utils import *
 
@@ -24,7 +24,7 @@ def environment_setup(env_num = 1):
     if env_num == 1:
         # Load Panda robot and its environment
         ground_id = p.loadURDF("plane.urdf")
-        robot_id = p.loadURDF("franka_panda/panda.urdf", [0, 0.3, 0.6], useFixedBase=True)
+        robot_id = p.loadURDF("franka_panda/panda.urdf", [0, 0.3, 0.7], useFixedBase=True)
         table_id = p.loadURDF(os.path.join(pybullet_data.getDataPath(), "table/table.urdf"), basePosition=[0, 0, 0], useFixedBase=True)
         # Add Collision Objects
         teddy_vhacd_id_1 = p.loadURDF("teddy_vhacd.urdf", [-0.5, 0.1, 0.62], baseOrientation=p.getQuaternionFromEuler([1.5, 0, -0.2]), globalScaling=2.0)
@@ -44,7 +44,7 @@ def environment_setup(env_num = 1):
                          cloth_z_up_id]
         
         # Add Goal IDs
-        goal_id_1 = p.loadURDF("soccerball.urdf", [0.2, -0.3, 0.685], baseOrientation=p.getQuaternionFromEuler([0, 0, 0.5]), globalScaling=0.2)
+        goal_id_1 = p.loadURDF("soccerball.urdf", [0.2, -0.3, 0.75], baseOrientation=p.getQuaternionFromEuler([0, 0, 0.55]), globalScaling=0.2)
         goal_id = [goal_id_1]
 
     # Environment 02 - Spheres
@@ -185,14 +185,14 @@ def environment_update(collision_ids, dt = 1/240, velocity = 0.1, flag_01 = 1, f
     
 if __name__ == "__main__":
     # Configuring parameters
-    duration = 500; fps = 30
+    duration = 300; fps = 30
     time_steps = int(duration * fps); dt = 1.0 / fps
     
     # Simulation Parameters
     point_cloud_count = 300
-    env_num = 3
+    env_num = 1
     planner = "RRT"
-    trial = 3
+    trial = 1
 
     # Set the environment
     physics_client, collision_ids, goal_id, robot_id, home_positions = environment_setup(env_num=env_num)
@@ -250,9 +250,65 @@ if __name__ == "__main__":
         print(f"Path saved: {np.round(path_saved,5)}")
 
     elif planner == "RRT_Real_Time":
-        print(f"Get Position from ID: {get_position_from_id(goal_id[2])[0]}")
-        planner = RealTimeRRT(robot_id= robot_id, collision_ids=collision_ids, goal_position = get_position_from_id(goal_id[2])[0])
-        planner.run(start_position = get_end_effector_state(robot_id, 11)[0],goal_position = get_position_from_id(goal_id[2])[0])
+        path_saved = np.array([goal_positions[0]])  # Start at the first goal position
+
+        # Set up PID gains for joint position control
+        p_gain = 0.5
+        i_gain = 0.01
+        d_gain = 0.1
+
+        for i in range(1, len(goal_positions)):
+            print(f"\nRunning RRT Star with Object Avoidance Motion Planner for goal position {i}")
+            print(f"Start position: {np.round(goal_positions[i-1], 5)}")
+            print(f"Goal position: {np.round(goal_positions[i], 5)}")
+
+            # Initialize the RRT planner
+            rrt_oa = RRT_Real_Time(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=robot_id, obstacle_ids=collision_ids, max_iter=2000, step_size=0.75)
+
+            # Real-time path following and replanning
+            current_goal_index = i
+            current_path, some_path = rrt_oa.get_path()
+
+            print(some_path)
+            path_index = 0
+            print("LMAO")
+
+            # Get current joint states
+            current_joint_states = p.getJointStates(robot_id, range(7))
+            current_joint_positions = [state[0] for state in current_joint_states]
+
+            # # Check current robot state and obstacle positions
+            current_robot_pos = rrt_oa.forward_kinematics(current_joint_positions)
+
+            is_obstacle_near, nearby_obstacles = rrt_oa.check_obstacle_proximity(current_robot_pos)
+            print(is_obstacle_near)
+            # print( np.linalg.norm(current_robot_pos - rrt_oa.forward_kinematics(goal_positions[i])))
+            while( np.linalg.norm(current_robot_pos - rrt_oa.forward_kinematics(goal_positions[i])) > 0.1):
+
+                print("Lamo")
+                # Get current joint states
+                current_joint_states = p.getJointStates(robot_id, range(7))
+                current_joint_positions = [state[0] for state in current_joint_states]
+
+                # # Check current robot state and obstacle positions
+                current_robot_pos = rrt_oa.forward_kinematics(current_joint_positions)
+
+                is_obstacle_near, nearby_obstacles = rrt_oa.check_obstacle_proximity(current_robot_pos)
+                if is_obstacle_near:
+                    print("Obstacle nearby! Replanning path...")
+
+                    # Reinitialize RRT planner with current state
+                    rrt_oa = RRT_Real_Time(q_start=current_robot_pos,  q_goal=goal_positions[current_goal_index], robot_id=robot_id, obstacle_ids=collision_ids, max_iter=2000, step_size=0.75)
+
+                    current_path, some_path = rrt_oa.get_path()
+
+            # Accumulate path
+            path_saved = np.concatenate((path_saved, current_path), axis=0)
+
+            # Visualize the path
+            rrt_oa.visualize(env_num=env_num, trial=trial, goal_index=i)
+
+            print(path_saved)
 
     # Initializing Simulation
     p.setRealTimeSimulation(0)
@@ -357,7 +413,7 @@ if __name__ == "__main__":
             for frame in frames_list:
                 writer.append_data(frame)
     if planner == "RRT_Real_Time":
-        with imageio.get_writer('./Video_Demos/RRT_Real_Time.gif', mode='I', duration=duration/len(frames_list)) as writer:
+        with imageio.get_writer(f'./Video_Demos/RRT_Real_Time_{env_num:02d}_{trial:02d}.gif', mode='I', duration=duration/len(frames_list)) as writer:
             for frame in frames_list:
                 writer.append_data(frame)
 

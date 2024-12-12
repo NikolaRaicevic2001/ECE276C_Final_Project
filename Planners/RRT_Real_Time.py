@@ -1,260 +1,66 @@
-import pybullet as p
-import pybullet_data
-import time
+#!/usr/bin/env python3
+import matplotlib.pyplot as plt
 import numpy as np
-import random
-
 import pybullet as p
-import numpy as np
-import time
 import random
+import time
 
-#########################
-##### RealTimeRRT #######
-#########################
-class RealTimeRRT:
-    def __init__(self, robot_id=None, collision_ids=None, goal_position=None, max_planning_time=0.1):
-        """
-        Initialize Real-Time RRT* Planner
-
-        :param robot_id: ID of the robot in PyBullet simulation
-        :param collision_ids: List of object IDs to check for collisions
-        :param goal_position: Initial goal position
-        :param max_planning_time: Maximum time allowed for tree expansion in each iteration
-        """
-        # Core planner components
+class RRT_Real_Time:
+    def __init__(self, q_start, q_goal, robot_id, obstacle_ids, max_iter=500, step_size=0.5, safety_distance=0.2):
+        """ RRT* Initialization with Obstacle Avoidance """
+        self.q_start = self.Node(q_start)
+        self.q_goal = self.Node(q_goal)
+        self.obstacle_ids = obstacle_ids
         self.robot_id = robot_id
-        self.collision_ids = collision_ids
+        self.q_limits = []
+        self.max_iter = max_iter
+        self.step_size = step_size
+        self.safety_distance = safety_distance
+        self.node_list = [self.q_start]
+        self.path = []
 
-        # Planning parameters
-        self.current_goal = goal_position
-        self.max_planning_time = max_planning_time
-
-        # Tree representation
-        self.nodes = []
-        self.edges = {}
-        self.costs = {}
-
-        # Motion planning parameters
-        self.step_size = 0.1
-        self.goal_bias = 0.1
-        self.max_iterations = 1000
-
-        # Agent state tracking
-        self.current_position = None
-        self.current_path = []
-
-    def forward_kinematics(self, joint_angles):
-        """Compute end-effector position for given joint angles"""
-        # Similar to RRTManipulatorPlanner's method
-        for i, angle in enumerate(joint_angles):
-            p.resetJointState(self.robot_id, i, angle)
-
-        end_effector_state = p.getLinkState(self.robot_id, 6)
-        end_effector_pos = end_effector_state[0]
-        return end_effector_pos
-
-    def inverse_kinematics(self, target_position):
-        """Compute joint angles for a target gripper position"""
-        # Similar to RRTManipulatorPlanner's method
-        target_orientation = p.getQuaternionFromEuler([np.pi, 0, 0])
-
-        joint_angles = p.calculateInverseKinematics(
-            self.robot_id,
-            6,  # End-effector link index
-            target_position,
-            targetOrientation=target_orientation
-        )
-
-        return joint_angles[:7]
-
-    def is_state_valid(self, joint_angles):
-        """Check if the given joint configuration is collision-free"""
-        # Reset joint states
-        for i, angle in enumerate(joint_angles):
-            p.resetJointState(self.robot_id, i, angle)
-
-        # Check collisions
-        for collision_id in self.collision_ids:
-            if p.getContactPoints(self.robot_id, collision_id):
-                return False
-        return True
-
-    def distance(self, config1, config2):
-        """Compute distance between two joint configurations"""
-        return np.linalg.norm(np.array(config1) - np.array(config2))
-
-    def random_configuration(self):
-        """Generate a random valid joint configuration"""
-        joint_angles = []
+        # Fetch joint limits
         for i in range(7):
-            joint_info = p.getJointInfo(self.robot_id, i)
-            joint_angles.append(random.uniform(joint_info[8], joint_info[9]))
-        return joint_angles
+            joint_info = p.getJointInfo(robot_id, i)
+            self.q_limits.append(joint_info[8:10])
 
-    def interpolate_path(self, start, end, num_steps=10):
-        """Interpolate between two configurations"""
-        interpolated_configs = []
-        for i in range(num_steps + 1):
-            t = i / num_steps
-            interpolated_config = [
-                start[j] + t * (end[j] - start[j])
-                for j in range(len(start))
-            ]
-            interpolated_configs.append(interpolated_config)
-        return interpolated_configs
+    class Node:
+        def __init__(self, joint_angles):
+            self.joint_angles = np.array(joint_angles)
+            self.parent = None
+            self.cost = 0
 
-    def expand_and_rewire(self, start_config, goal_config):
+    def check_obstacle_proximity(self, gripper_pos):
         """
-        Expand and rewire the RRT* tree
+        Check if any obstacles are too close to the gripper
 
-        This is equivalent to Algorithm 2 in the RT-RRT* paper
+        Args:
+        gripper_pos (list/np.array): Current gripper position
+
+        Returns:
+        bool: True if an obstacle is too close, False otherwise
+        list: List of nearby obstacles
         """
-        start_time = time.time()
+        nearby_obstacles = []
+        for obstacle_id in self.obstacle_ids:
+            # Get the base position of the obstacle
+            obstacle_pos, _ = p.getBasePositionAndOrientation(obstacle_id)
+            distance = np.linalg.norm(np.array(gripper_pos) - np.array(obstacle_pos))
 
-        while time.time() - start_time < self.max_planning_time:
-            # Goal biasing
-            if random.random() < self.goal_bias:
-                rand_config = goal_config
-            else:
-                rand_config = self.random_configuration()
+            if distance <= self.safety_distance:
+                nearby_obstacles.append((obstacle_pos, distance))
 
-            # Find nearest node
-            nearest_node = min(self.nodes, key=lambda n: self.distance(n, rand_config))
-
-            # Steer towards random configuration
-            direction = np.array(rand_config) - np.array(nearest_node)
-            direction_norm = np.linalg.norm(direction)
-
-            if direction_norm > self.step_size:
-                direction = direction / direction_norm * self.step_size
-
-            new_node = (np.array(nearest_node) + direction).tolist()
-
-            # Collision and path checking
-            if not self.is_state_valid(new_node):
-                continue
-
-            interpolated_path = self.interpolate_path(nearest_node, new_node)
-            if not all(self.is_state_valid(config) for config in interpolated_path):
-                continue
-
-            # Add node to tree
-            self.nodes.append(new_node)
-
-            # Cost and parent selection
-            best_parent = nearest_node
-            best_cost = self.costs.get(tuple(nearest_node), 0) + self.distance(nearest_node, new_node)
-
-            # Rewiring
-            near_nodes = [n for n in self.nodes if self.distance(n, new_node) < self.step_size * 2]
-
-            for near_node in near_nodes:
-                interpolated_path = self.interpolate_path(near_node, new_node)
-
-                if not all(self.is_state_valid(config) for config in interpolated_path):
-                    continue
-
-                tentative_cost = self.costs.get(tuple(near_node), 0) + self.distance(near_node, new_node)
-
-                if tentative_cost < best_cost:
-                    best_parent = near_node
-                    best_cost = tentative_cost
-
-            # Update tree
-            self.edges[tuple(new_node)] = best_parent
-            self.costs[tuple(new_node)] = best_cost
-
-            # Check goal proximity
-            if self.distance(new_node, goal_config) < self.step_size:
-                break
-
-    def extract_path(self, goal_config):
-        """Extract path from start to goal"""
-        path = [goal_config]
-        current = goal_config
-
-        while tuple(current) in self.edges:
-            current = self.edges[tuple(current)]
-            path.append(current)
-
-        path.reverse()
-        return path
-
-    def real_time_rrt_star(self, start_config, goal_config):
-        """
-        Main Real-Time RRT* algorithm
-
-        Implements the main loop from Algorithm 1
-        """
-        # Initialize tree with start configuration
-        self.nodes = [start_config]
-        self.edges = {}
-        self.costs = {tuple(start_config): 0}
-
-
-        next_waypoint = np.array([0, 0, 0])
-        # Main planning loop
-        while True:
-            # Update goal and free space (in a real system, this would use sensor data)
-            # Here, we'll simulate by potentially changing goal slightly
-            self.current_goal = goal_config  # In a real system, this would be dynamically updated
-
-            # Expand and rewire tree
-            self.expand_and_rewire(start_config, self.current_goal)
-
-            # Plan path to current goal
-            self.current_path = self.extract_path(self.current_goal)
-
-            # In a real system, check agent proximity to path start
-            # For simulation, we'll use the first waypoint
-            if len(self.current_path) > 1:
-                next_waypoint = self.current_path[1]
-
-                # Move towards next waypoint
-                for i, angle in enumerate(next_waypoint):
-                    p.setJointMotorControl2(self.robot_id, i, p.POSITION_CONTROL, angle)
-
-                p.stepSimulation()
-                time.sleep(0.1)  # Visualization delay
-
-            # In a real system, this would continue until goal is reached
-            # Here, we'll add a break condition for demonstration
-            # print(self.inverse_kinematics(next_waypoint))
-            if self.distance(next_waypoint, self.forward_kinematics(goal_config)) < 0.1:
-                break
-
-    def run(self, start_position, goal_position):
-        """Execute the Real-Time RRT* planner"""
-        # Convert positions to joint configurations using inverse kinematics
-        start_config = self.inverse_kinematics(start_position)
-        goal_config = self.inverse_kinematics(goal_position)
-
-        # Run the real-time path planning
-        self.real_time_rrt_star(start_config, goal_config)
-
-        print("Path planning completed!")
-
-###################################
-##### RRTManipulatorPlanner #######
-###################################
-class RRTManipulatorPlanner:
-    def __init__(self, robot_id=None, collision_ids=None): 
-        # Load environment and robot
-        self.robot_id = robot_id
-        self.collision_ids = collision_ids
-
-        # Gripper offset to account for gripper length
-        # This value should be adjusted based on the actual gripper length
-        self.gripper_offset = 0.1  # 10 cm offset from end-effector
+        return len(nearby_obstacles) > 0, nearby_obstacles
 
     def forward_kinematics(self, joint_angles):
         """Compute end-effector position for given joint angles"""
+        gripper_offset = 0.1  # 10 cm offset from end-effector
+        ee_id = 8  # Endpoint link ID
+
         for i, angle in enumerate(joint_angles):
             p.resetJointState(self.robot_id, i, angle)
 
-        # Get the end-effector link state
-        end_effector_state = p.getLinkState(self.robot_id, 6)
+        end_effector_state = p.getLinkState(self.robot_id, ee_id)
         end_effector_pos = end_effector_state[0]
         end_effector_orient = end_effector_state[1]
 
@@ -263,313 +69,259 @@ class RRTManipulatorPlanner:
         rot_matrix = np.array(rot_matrix).reshape(3, 3)
 
         # Apply offset along the z-axis of the end-effector
-        gripper_tip = end_effector_pos + rot_matrix[:, 2] * self.gripper_offset
+        gripper_tip = end_effector_pos + rot_matrix[:, 2] * gripper_offset
 
         return gripper_tip
 
-    def inverse_kinematics(self, target_position, target_orientation=None):
-        """Compute joint angles for a target gripper position"""
-        # If no specific orientation is provided, use a default downward orientation
-        if target_orientation is None:
-            # Quaternion for pointing straight down
-            target_orientation = p.getQuaternionFromEuler([np.pi, 0, 0])
+    def generate_avoidance_goal(self, current_pos, nearby_obstacles):
+        """
+        Generate a new goal position to avoid nearby obstacles
 
-        # Adjust target position to account for gripper offset
-        # We need to move the target point back along the z-axis of the gripper
-        link_state = p.getLinkState(self.robot_id, 6)
-        current_orient = link_state[1]
-        current_rot_matrix = np.array(p.getMatrixFromQuaternion(current_orient)).reshape(3, 3)
+        Args:
+        current_pos (list/np.array): Current gripper position
+        nearby_obstacles (list): List of nearby obstacles
 
-        # Adjust target position by subtracting the offset along the current z-axis
-        adjusted_target = np.array(target_position) - current_rot_matrix[:, 2] * self.gripper_offset
+        Returns:
+        list: New goal position to avoid obstacles
+        """
+        current_pos = np.array(current_pos)
+        avoidance_vector = np.zeros(3)
 
-        # Use PyBullet's inverse kinematics solver
-        joint_angles = p.calculateInverseKinematics(
-            self.robot_id,
-            6,  # End-effector link index
-            adjusted_target,
-            targetOrientation=target_orientation
-        )
-
-        return joint_angles
-
-    def is_state_valid(self, joint_angles):
-        """Check if the given joint configuration is collision-free"""
-        for i, angle in enumerate(joint_angles):
-            p.resetJointState(self.robot_id, i, angle)
-
-        collisions = []
-        for collision_id in self.collision_ids:
-            collisions = p.getContactPoints(self.robot_id, collision_id)
-
-        return len(collisions) == 0
-
-    def _setup_collision_detection(self):
-        """Setup collision detection parameters"""
-        for joint in range(self.num_joints):
-            p.setCollisionFilterPair(self.panda_id, self.cube_id, joint, -1, 1)
-
-    def check_collisions(self) -> bool:
-        """Check for collisions between robot and cube"""
-        contact_points = p.getContactPoints(self.panda_id, self.cube_id)
-        return len(contact_points) > 0
-    
-    def random_configuration(self):
-        """Generate a random valid joint configuration"""
-        joint_angles = []
-        for i in range(7):
-            joint_info = p.getJointInfo(self.robot_id, i)
-            joint_angles.append(random.uniform(joint_info[8], joint_info[9]))
-        return joint_angles
-
-    def distance(self, config1, config2):
-        """Compute distance between two joint configurations"""
-        return np.linalg.norm(np.array(config1) - np.array(config2))
-
-    def plan_rrt_star(self, start_angles, goal_angles, max_iterations=1000, step_size=0.1, goal_bias=0.1):
-        """RRT* path planning algorithm with comprehensive collision checking"""
-        nodes = [start_angles]
-        edges = {}
-        costs = {tuple(start_angles): 0}
-
-        for _ in range(max_iterations):
-            # Goal bias for directed exploration
-            if random.random() < goal_bias:
-                rand_config = goal_angles[:7]
-            else:
-                rand_config = self.random_configuration()
-
-            # Find nearest node
-            nearest_node = min(nodes, key=lambda n: self.distance(n, rand_config))
-
-            # Steer towards the random configuration
-            direction = np.array(rand_config) - np.array(nearest_node)
+        for obstacle_pos, distance in nearby_obstacles:
+            direction = current_pos - np.array(obstacle_pos)
             direction_norm = np.linalg.norm(direction)
 
-            # Limit step size
-            if direction_norm > step_size:
-                direction = direction / direction_norm * step_size
+            # Compute repulsive force inversely proportional to distance
+            repulsive_force = direction / (direction_norm ** 2)
+            avoidance_vector += repulsive_force
 
-            new_node = (np.array(nearest_node) + direction).tolist()
+        # Normalize and scale avoidance vector
+        avoidance_scale = min(self.safety_distance, np.linalg.norm(avoidance_vector))
+        if np.linalg.norm(avoidance_vector) > 0:
+            avoidance_vector = (avoidance_vector / np.linalg.norm(avoidance_vector)) * avoidance_scale
 
-            # Comprehensive collision checking
-            # 1. Check if the new node itself is collision-free
-            if not self.is_state_valid(new_node):
+        # Generate new goal slightly away from obstacles
+        new_goal = current_pos + avoidance_vector
+        return new_goal.tolist()
+
+    def check_node_collision(self, joint_position):
+        """
+        Checks for collisions between a robot and obstacles in PyBullet.
+
+        Args:
+            joint_position (list): List of joint positions.
+
+        Returns:
+            bool: True if a collision is detected, False otherwise.
+        """
+        # Set joint positions
+        for joint_index, joint_pos in enumerate(joint_position):
+            p.resetJointState(self.robot_id, joint_index, joint_pos)
+
+        # Perform collision check for all links
+        for object_id in self.obstacle_ids:
+            for link_index in range(0, p.getNumJoints(self.robot_id)):
+                contact_points = p.getClosestPoints(bodyA=self.robot_id, bodyB=object_id,
+                                                    distance=0.01, linkIndexA=link_index)
+                if contact_points:  # If any contact points exist, a collision is detected
+                    return True
+        return False
+
+    def check_edge_collision(self, joint_position_start, joint_position_end, discretization_step=0.01):
+        """
+        Checks for collision between two joint positions of a robot in PyBullet.
+
+        Args:
+            joint_position_start (list): List of joint positions to start from.
+            joint_position_end (list): List of joint positions to get to.
+            discretization_step (float): maximum interpolation distance before a new collision check is performed.
+
+        Returns:
+            bool: True if a collision is detected, False otherwise.
+        """
+        # Interpolate joint positions between start and end
+        interpolated_positions = np.linspace(joint_position_start, joint_position_end,
+                                             int(np.linalg.norm(np.array(joint_position_end) -
+                                                               np.array(joint_position_start))/discretization_step))
+
+        # Check for collision at each interpolated joint position
+        for joint_position in interpolated_positions:
+            if self.check_node_collision(joint_position):
+                return True
+        return False
+
+    def step(self, from_node, to_joint_angles):
+        """Step from "from_node" to "to_joint_angles", that should
+         (a) return the to_joint_angles if it is within the self.step_size or
+         (b) only step so far as self.step_size, returning the new node within that distance"""
+
+        # Calculate the distance between the two nodes
+        distance = np.linalg.norm(to_joint_angles - from_node.joint_angles)
+        if distance <= self.step_size:
+            return self.Node(to_joint_angles)
+        else:
+            # Calculate the step size
+            step = (to_joint_angles - from_node.joint_angles) / distance * self.step_size
+            return self.Node(from_node.joint_angles + step)
+
+    def get_nearest_node(self, random_point):
+        """Find the nearest node in the tree to a given point."""
+
+        # Find the nearest node to the random point
+        distances = [np.linalg.norm(node.joint_angles - random_point) for node in self.node_list]
+        nearest_node = self.node_list[np.argmin(distances)]
+        return nearest_node
+
+    def neighbors(self, node, gamma=0.005, etta=0.005):
+        """Find the neighbors of a node within a certain radius."""
+        # Neighborhood radius
+        radius = min(gamma*(np.log(len(self.node_list))/len(self.node_list))**(1/len(self.q_limits)), etta)
+
+        # Find the neighbors of a node
+        neighbors = [n for n in self.node_list if np.linalg.norm(n.joint_angles - node.joint_angles) < radius]
+        return neighbors
+
+    def cost_optimal(self, node, neighbors, goal_weight=1.0):
+        """Update the cost of a node using a heuristic that biases towards the goal."""
+        for neighbor in neighbors:
+            if not self.check_edge_collision(node.joint_angles, neighbor.joint_angles):
+                cost = neighbor.cost + np.linalg.norm(node.joint_angles - neighbor.joint_angles) + goal_weight * np.linalg.norm(node.joint_angles - self.q_goal.joint_angles)
+                if cost < node.cost:
+                    node.cost = cost
+                    node.parent = neighbor
+        return node
+
+    def rewiring(self, node, neighbors):
+        """Rewire the neighbors of a node based on the new node."""
+        # Rewire the neighbors of the node
+        for neighbor in neighbors:
+            if neighbor.cost > node.cost + np.linalg.norm(node.joint_angles - neighbor.joint_angles) and not self.check_edge_collision(node.joint_angles, neighbor.joint_angles):
+                neighbor.parent = node
+        return neighbors
+
+    def variable_goal_bias(self, current_iter, max_iter, initial_bias, final_bias):
+        alpha = 2.0  # Form factor
+        P = initial_bias + (final_bias - initial_bias) * (1 - np.exp(-alpha * current_iter / max_iter))
+        return min(P, 0.75)  # Cap at 0.75 to ensure some exploration
+
+    def informed_sample(self, c_best):
+        if c_best < float('inf'):
+            c_min = np.linalg.norm(self.q_start.joint_angles - self.q_goal.joint_angles)
+            x_center = (self.q_start.joint_angles + self.q_goal.joint_angles) / 2
+            C = self.get_rotation_to_world(self.q_start.joint_angles, self.q_goal.joint_angles)
+            r = np.array([(c_best**2 - c_min**2) / 4] + [0] * (len(self.q_limits) - 1))
+            L = np.diag(r)
+            x_ball = self.sample_unit_ball()
+            return C @ L @ x_ball + x_center
+        else:
+            return np.random.uniform(low=[limit[0] for limit in self.q_limits], high=[limit[1] for limit in self.q_limits]) + np.random.normal(0, 0.1, size=len(self.q_limits))
+
+    def get_rotation_to_world(self, start, goal):
+        a1 = np.array(goal) - np.array(start)
+        a1_unit = a1 / np.linalg.norm(a1)
+        M = np.eye(len(self.q_limits))
+        M[:, 0] = a1_unit
+        return M
+
+    def sample_unit_ball(self):
+        while True:
+            x = np.random.uniform(-1, 1, size=len(self.q_limits))
+            if np.linalg.norm(x) <= 1:
+                return x
+
+    def plan(self, initial_goal_bias=0.1, final_goal_bias=1.0, c_best=float('inf')):
+        """Run the RRT* algorithm with dynamically increasing goal bias and obstacle avoidance."""
+        for i in range(self.max_iter):
+            # Variable increase goal bias over iterations
+            goal_bias = self.variable_goal_bias(i, self.max_iter, initial_goal_bias, final_goal_bias)
+
+            # Use goal bias to select the goal as the target with some probability
+            if np.random.rand() < goal_bias:
+                random_point = self.q_goal.joint_angles
+            else:
+                random_point = self.informed_sample(c_best)
+
+            nearest_node = self.get_nearest_node(random_point)
+            new_node = self.step(nearest_node, random_point)
+
+            # Check for collisions and obstacle proximity
+            gripper_pos = self.forward_kinematics(new_node.joint_angles)
+            is_obstacle_near, nearby_obstacles = self.check_obstacle_proximity(gripper_pos)
+
+            if is_obstacle_near:
+                # Generate avoidance goal
+                avoidance_goal = self.generate_avoidance_goal(gripper_pos, nearby_obstacles)
+                # Adjust new_node's joint angles to avoid obstacles
+                # You might want to implement inverse kinematics here to convert avoidance_goal to joint angles
                 continue
 
-            # 2. Check if the path (edge) between nearest node and new node is collision-free
-            def interpolate_path(start, end, num_steps=10):
-                """Interpolate between two configurations to check intermediate states"""
-                interpolated_configs = []
-                for i in range(num_steps + 1):
-                    t = i / num_steps
-                    interpolated_config = [
-                        start[j] + t * (end[j] - start[j])
-                        for j in range(len(start))
-                    ]
-                    interpolated_configs.append(interpolated_config)
-                return interpolated_configs
+            # Check for collisions
+            if not self.check_edge_collision(nearest_node.joint_angles, new_node.joint_angles):
+                new_node.parent = nearest_node
+                new_node.cost = nearest_node.cost + np.linalg.norm(new_node.joint_angles - nearest_node.joint_angles)
+                neighbors = self.neighbors(new_node)
+                new_node = self.cost_optimal(new_node, neighbors)
+                self.node_list.append(new_node)
 
-            # Check intermediate configurations along the path
-            interpolated_path = interpolate_path(nearest_node, new_node)
-            if not all(self.is_state_valid(config) for config in interpolated_path):
-                continue
+                # Rewire the neighbors of the new node
+                neighbors = self.rewiring(new_node, neighbors)
 
-            # If collision checks pass, add the node
-            nodes.append(new_node)
+                if np.linalg.norm(new_node.joint_angles - self.q_goal.joint_angles) < self.step_size:
+                    if not self.check_edge_collision(new_node.joint_angles, self.q_goal.joint_angles):
+                        self.q_goal.parent = new_node
+                        self.q_goal.cost = new_node.cost + np.linalg.norm(self.q_goal.joint_angles - new_node.joint_angles)
+                        self.node_list.append(self.q_goal)
+                        break
 
-            # Find near nodes for potential rewiring
-            near_nodes = [n for n in nodes if self.distance(n, new_node) < step_size * 2]
+        return self.node_list
 
-            # Choose parent with minimum cost
-            best_parent = nearest_node
-            best_cost = costs.get(tuple(nearest_node), float('inf')) + self.distance(nearest_node, new_node)
+    def get_path(self):
+        """Return the path from the start node to the goal node."""
 
-            # Check alternative parents
-            for near_node in near_nodes:
-                # Interpolate and check path to this potential parent
-                interpolated_path = interpolate_path(near_node, new_node)
+        self.plan()
+        # print(self.node_list)
+        some_path = []
+        for no in self.node_list:
+            some_path.append(no.joint_angles)
 
-                # Skip if path is not collision-free
-                if not all(self.is_state_valid(config) for config in interpolated_path):
-                    continue
+        node = self.q_goal
+        while node is not None:
+            self.path.append(node.joint_angles)
+            node = node.parent
 
-                # Compute potential cost
-                tentative_cost = costs.get(tuple(near_node), float('inf')) + self.distance(near_node, new_node)
+        if not np.array_equal(self.path[-1], self.q_start.joint_angles):
+            print("Path does not connect back to the start! Debug required.")
 
-                if tentative_cost < best_cost:
-                    best_parent = near_node
-                    best_cost = tentative_cost
+        return self.path[::-1], some_path[::-1]
 
-            # Update edges and costs
-            edges[tuple(new_node)] = best_parent
-            costs[tuple(new_node)] = best_cost
+    def visualize(self, env_num=None, trial=None, goal_index=None):
+        """Visualize the RRT* tree and path."""
+        plt.figure(figsize=(10, 10))
 
-            # Rewire nearby nodes
-            for near_node in near_nodes:
-                current_near_cost = costs.get(tuple(near_node), float('inf'))
-                potential_new_cost = best_cost + self.distance(new_node, near_node)
+        # Plot all nodes and connections
+        for node in self.node_list:
+            if node.parent:
+                plt.plot([node.joint_angles[0], node.parent.joint_angles[0]],
+                         [node.joint_angles[1], node.parent.joint_angles[1]],
+                         'b-', alpha=0.3)  # Blue lines for connections
 
-                # Interpolate and check path for rewiring
-                interpolated_path = interpolate_path(new_node, near_node)
+        # Plot all nodes
+        node_x = [node.joint_angles[0] for node in self.node_list]
+        node_y = [node.joint_angles[1] for node in self.node_list]
+        plt.scatter(node_x, node_y, c='g', s=20)  # Green dots for nodes
 
-                # Only rewire if path is collision-free and cost is lower
-                if (potential_new_cost < current_near_cost and
-                    all(self.is_state_valid(config) for config in interpolated_path)):
-                    edges[tuple(near_node)] = new_node
-                    costs[tuple(near_node)] = potential_new_cost
+        # Plot start and goal
+        plt.scatter(self.q_start.joint_angles[0], self.q_start.joint_angles[1], c='b', s=150, marker='*')  # Blue star for start
+        plt.scatter(self.q_goal.joint_angles[0], self.q_goal.joint_angles[1], c='r', s=150, marker='*')  # Red star for goal
 
-            # Check if goal is reached
-            if self.distance(new_node, goal_angles[:7]) < step_size:
-                # Check if path to goal is collision-free
-                goal_path = interpolate_path(new_node, goal_angles[:7])
-                if all(self.is_state_valid(config) for config in goal_path):
-                    nodes.append(goal_angles[:7])
-                    edges[tuple(goal_angles[:7])] = new_node
-                    costs[tuple(goal_angles[:7])] = best_cost
-                    break
+        # Plot the final path
+        if self.path:
+            path_x = [node[0] for node in self.path]
+            path_y = [node[1] for node in self.path]
+            plt.plot(path_x, path_y, 'r-', linewidth=2)  # Red line for the final path
 
-        # Extract path
-        path = []
-        current = goal_angles[:7]
-        while tuple(current) in edges:
-            path.append(current)
-            current = edges[tuple(current)]
-        path.append(start_angles)
-        path.reverse()
-
-        return path
-
-    def execute_path(self, path):
-        """Execute a planned path in simulation"""
-        for joint_angles in path:
-            for i, angle in enumerate(joint_angles):
-                p.setJointMotorControl2(self.robot_id, i, p.POSITION_CONTROL, angle)
-            p.stepSimulation()
-            time.sleep(0.1)  # Visualization delay   
-
-    def plan_and_execute_trajectory(self, goal_positions):
-        """Plan and execute a trajectory through multiple goal positions"""
-        # Start from initial zero configuration
-        current_angles = [0, 0, 0, 0, 0, 0, 0]
-        total_path = []
-        verified_goal_angles = []
-
-        # Downward orientation for gripper (pointing straight down)
-        goal_orientation = p.getQuaternionFromEuler([np.pi, 0, 0])
-
-        # First, plan paths and verify tip positions for all goal positions
-        for goal_position in goal_positions:
-            # Calculate goal joint angles using IK
-            goal_angles = self.inverse_kinematics(goal_position, goal_orientation)
-            print(f"Moving to position: {goal_position}")
-            print("Goal Joint Angles:", goal_angles[:7])
-
-            # Verify gripper tip position
-            for i, angle in enumerate(goal_angles[:7]):
-                p.resetJointState(self.robot_id, i, angle)
-
-            gripper_pos = self.forward_kinematics(goal_angles[:7])
-            print("Actual Gripper Position:", gripper_pos)
-            print("Target Position:", goal_position)
-
-            distance_to_target = np.linalg.norm(np.array(gripper_pos) - np.array(goal_position))
-            print("Distance to Target:", distance_to_target)
-
-            # Plan path using RRT*
-            path = self.plan_rrt_star(current_angles, goal_angles)
-            print("Planned Path Length:", len(path))
-
-            total_path.append(path)
-            verified_goal_angles.append(goal_angles[:7])
-
-
-            if path:
-                self.execute_path(path)
-                time.sleep(1)
-
-            # Update current angles to the last configuration of the path
-            current_angles = path[-1]
-
-        # Now execute the entire planned trajectory
-        # for path in total_path:
-        #     if path:
-        #         self.execute_path(path)
-        #         time.sleep(1)
-
-    def run(self, goal_positions):
-        """Main execution method"""
-        try:
-            # Plan and execute trajectory
-            self.plan_and_execute_trajectory(goal_positions)
-
-            # Keep simulation running
-            while True:
-                p.stepSimulation()
-                time.sleep(0.01)
-        except KeyboardInterrupt:
-            self.cleanup()
-
-    def cleanup(self):
-        """Disconnect from PyBullet simulation"""
-        p.disconnect()
-
-def main():
-    # Define goal positions
-    goal_positions = [
-        [0.5, -0.0, 0.5],
-        [-0.5, 0.0, 0.5],
-        [0.5, 0.5, 0.5],
-        [0.5, -0.5, 0.5]
-    ]
-
-    # Create planner and run
-    planner = RRTManipulatorPlanner()
-    planner.run(goal_positions)
-
-if __name__ == "__main__":
-    main()
-
-
-# # A3xN path array that will be filled with waypoints through all the goal positions
-# path_saved = np.array([[-2.54, 0.15, -0.15]]) # Start at the first goal position
-
-# ################################################################################
-# ####  RUN THE SIMULATION AND MOVE THE ROBOT ALONG PATH_SAVED ###################
-# ################################################################################
-
-# # Set the initial joint positions
-# for joint_index, joint_pos in enumerate(goal_positions[0]):
-#     p.resetJointState(arm_id, joint_index, joint_pos)
-
-# # Move through the waypoints
-# for waypoint in path_saved:
-#     # "move" to next waypoints
-#     for joint_index, joint_pos in enumerate(waypoint):
-#     # run velocity control until waypoint is reached
-#         while True:
-#             #get current joint positions
-#             goal_positions = [p.getJointState(arm_id, i)[0] for i in range(3)]
-#             # calculate the displacement to reach the next waypoint
-#             displacement_to_waypoint = waypoint-goal_positions
-#             # check if goal is reached
-#             max_speed = 0.05
-#             if(np.linalg.norm(displacement_to_waypoint) < max_speed):
-#                 break
-#             else:
-#                 # calculate the "velocity" to reach the next waypoint
-#                 velocities = np.min((np.linalg.norm(displacement_to_waypoint), max_speed))*displacement_to_waypoint/np.linalg.norm(displacement_to_waypoint)
-#                 for joint_index, joint_step in enumerate(velocities):
-#                     p.setJointMotorControl2(
-#                         bodyIndex=arm_id,
-#                         jointIndex=joint_index,
-#                         controlMode=p.VELOCITY_CONTROL,
-#                         targetVelocity=joint_step,
-#                     )
-
-#             #Take a simulation step
-#             p.stepSimulation()
-#     time.sleep(1.0 / 240.0)
-
-# Cost changing
-# Scheduler
+        plt.title("RRT* Obstacle Avoidance Tree and Path")
+        plt.xlabel("Joint Angle 1")
+        plt.ylabel("Joint Angle 2")
+        plt.grid(True)
+        plt.savefig(f"Visualizations/RRT_Real_Time_Environment_{env_num:02d}_{trial:02d}_{goal_index:02d}.png")
