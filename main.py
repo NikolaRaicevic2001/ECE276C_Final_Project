@@ -6,7 +6,7 @@ import time
 import os
 from datetime import datetime
 from Planners.RRT_Star import RRT_Star,check_node_collision, check_edge_collision
-from Planners.RRT import RRTManipulatorPlanner, RealTimeRRT
+from Planners.RRT import RRTManipulatorPlanner, RealTimeRRT, RealTimeRRTObstacleAvoidance
 from point_cloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
 from utils import *
 
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     point_cloud_count = 300
     env_num = 3
 
-    planner = "RRT_Star"
+    planner = "RRT_Real_Time_Object"
 
     # Set the environment
     physics_client, collision_ids, goal_id, robot_id, home_positions = environment_setup(env_num=env_num)

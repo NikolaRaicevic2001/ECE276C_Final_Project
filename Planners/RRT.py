@@ -320,6 +320,7 @@ class RealTimeRRTObstacleAvoidance(RealTimeRRT):
         """
         nearby_obstacles = []
         obstacle_positions = self.get_obstacle_positions()
+        print(obstacle_positions)
 
         for obstacle_pos in obstacle_positions:
             distance = np.linalg.norm(np.array(gripper_pos) - np.array(obstacle_pos))
@@ -364,73 +365,77 @@ class RealTimeRRTObstacleAvoidance(RealTimeRRT):
 
         return new_goal.tolist()
 
-    def dynamic_trajectory_planning(self, original_path, goal_positions):
+    def dynamic_trajectory_planning(self, goal_positions):
         """
-        Dynamically replan trajectory considering real-time obstacle positions
+        Dynamically plan a complete trajectory with continuous obstacle avoidance
 
         Args:
-        original_path (list): Initially planned path
-        goal_positions (list): Original goal positions
+        goal_positions (list): List of goal positions to visit
 
         Returns:
-        list: Updated path with obstacle avoidance
+        list: Complete path with obstacle avoidance
         """
-        updated_path = []
-        current_angles = original_path[0]
-
-        for segment_index, segment in enumerate(original_path[1:], 1):
-            # Forward kinematics to get current gripper position
-            for i, angle in enumerate(segment):
-                p.resetJointState(self.robot_id, i, angle)
-
-            gripper_pos = self.forward_kinematics(segment)
-
-            # Check obstacle proximity
-            is_obstacle_near, nearby_obstacles = self.check_obstacle_proximity(gripper_pos)
-
-            if is_obstacle_near:
-                print(f"Obstacle detected near segment {segment_index}")
-
-                # Generate avoidance goal
-                avoidance_goal = self.generate_avoidance_goal(gripper_pos, nearby_obstacles)
-                print(f"Avoidance goal: {avoidance_goal}")
-
-                # Replan path to avoidance goal
-                avoidance_angles = self.inverse_kinematics(avoidance_goal)
-                avoidance_path = self.plan_rrt_star(current_angles, avoidance_angles)
-
-                # Extend updated path
-                updated_path.extend(avoidance_path[:-1])
-
-                # Update current angles
-                current_angles = avoidance_path[-1]
-            else:
-                # If no obstacles, continue with original path
-                updated_path.append(segment)
-                current_angles = segment
-
-        return updated_path
-
-    def plan_and_execute_trajectory(self, goal_positions):
-        """Enhanced trajectory planning with dynamic obstacle avoidance"""
         current_angles = [0, 0, 0, 0, 0, 0, 0]
         goal_orientation = p.getQuaternionFromEuler([np.pi, 0, 0])
-
-        # Original RRT* path planning
         full_path = []
 
         for goal_position in goal_positions:
-            goal_angles = self.inverse_kinematics(goal_position, goal_orientation)
-            path = self.plan_rrt_star(current_angles, goal_angles)
+            while True:
+                # Plan initial path to goal
+                goal_angles = self.inverse_kinematics(goal_position, goal_orientation)
+                path = self.plan_rrt_star(current_angles, goal_angles)
 
-            full_path.extend(path[:-1])
-            current_angles = path[-1]
+                # Continuously check and avoid obstacles during path execution
+                path_complete = False
+                current_path_index = 0
 
-        # Dynamic obstacle avoidance replan
-        updated_path = self.dynamic_trajectory_planning(full_path, goal_positions)
+                while not path_complete and current_path_index < len(path):
+                    # Set current configuration
+                    current_config = path[current_path_index]
+                    for i, angle in enumerate(current_config):
+                        p.resetJointState(self.robot_id, i, angle)
 
-        # Execute updated path
-        self.execute_path(updated_path)
+                    # Get current gripper position
+                    gripper_pos = self.forward_kinematics(current_config)
+
+                    # Check obstacle proximity
+                    is_obstacle_near, nearby_obstacles = self.check_obstacle_proximity(gripper_pos)
+
+                    if is_obstacle_near:
+                        print(f"Obstacle detected near configuration {current_path_index}")
+
+                        # Generate avoidance goal
+                        avoidance_goal = self.generate_avoidance_goal(gripper_pos, nearby_obstacles)
+
+                        # Replan path to goal while avoiding obstacles
+                        avoidance_angles = self.inverse_kinematics(avoidance_goal)
+                        path = self.plan_rrt_star(current_angles, avoidance_angles)
+                        current_path_index = 0  # Reset path index
+                    else:
+                        current_path_index += 1
+
+                    # Check if we've reached the goal
+                    if current_path_index >= len(path):
+                        path_complete = True
+
+                # Extend full path and update current angles
+                full_path.extend(path[:-1])
+                current_angles = path[-1]
+
+                # Break inner loop if goal is reached
+                if np.linalg.norm(np.array(self.forward_kinematics(current_angles)) - np.array(goal_position)) < 0.1:
+                    break
+
+        return full_path
+
+
+    def plan_and_execute_trajectory(self, goal_positions):
+        """Enhanced trajectory planning with dynamic obstacle avoidance"""
+        # Plan complete trajectory with obstacle avoidance
+        full_path = self.dynamic_trajectory_planning(goal_positions)
+
+        # Execute the entire path at once
+        self.execute_path(full_path)
 
 
 
