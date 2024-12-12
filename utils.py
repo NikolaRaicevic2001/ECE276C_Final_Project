@@ -138,7 +138,7 @@ def damped_least_squares_ik(robot_id, target_position, target_orientation, joint
     
     return current_joint_angles
 
-def inverse_kinematics(robot_id, target_position, target_orientation=None, num_attempts=5):
+def inverse_kinematics(robot_id, target_position, target_orientation=None, num_attempts=5, joint_limits_scale = 0.9):
     """
     Compute joint angles for a target gripper position using step-by-step IK.
     """
@@ -153,7 +153,10 @@ def inverse_kinematics(robot_id, target_position, target_orientation=None, num_a
     joint_limits = []
     for i in movable_joints:
         joint_info = p.getJointInfo(robot_id, i)
-        joint_limits.append(joint_info[8:10])
+        lower_limit, upper_limit = joint_info[8:10]
+        scaled_lower = lower_limit * joint_limits_scale
+        scaled_upper = upper_limit * joint_limits_scale
+        joint_limits.append((scaled_lower, scaled_upper))
 
     for _ in range(num_attempts):
         # Randomize target orientation if not provided

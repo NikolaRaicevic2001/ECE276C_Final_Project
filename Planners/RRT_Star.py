@@ -76,7 +76,7 @@ class Node:
 ######################################################################
 ############################# RRT CLASS ##############################
 ######################################################################
-class RRT_Star:
+class RRT:
     def __init__(self, q_start, q_goal, robot_id, obstacle_ids, max_iter=500, step_size=0.5):
         """ RRT Initialization """
         self.q_start = Node(q_start)
@@ -173,7 +173,36 @@ class RRT_Star:
             if np.linalg.norm(x) <= 1:
                 return x
 
-    def plan(self, initial_goal_bias=0.1, final_goal_bias=1.0, c_best = float('inf')):
+    def plan_RRT(self, initial_goal_bias=0.1, final_goal_bias=1.0, c_best = float('inf')):
+        """ Run the RRT algorithm with a dynamically increasing goal bias. """
+        for i in range(self.max_iter):
+            # Variable increase goal bias over iterations
+            goal_bias = self.variable_goal_bias(i, self.max_iter, initial_goal_bias, final_goal_bias)
+
+            # Use goal bias to select the goal as the target with some probability
+            if np.random.rand() < goal_bias:
+                random_point = self.q_goal.joint_angles
+            else:
+                random_point = self.informed_sample(c_best)
+
+            nearest_node = self.get_nearest_node(random_point)
+            new_node = self.step(nearest_node, random_point)
+
+            # Check for collisions
+            if not check_edge_collision(self.robot_id, self.obstacle_ids, nearest_node.joint_angles, new_node.joint_angles):
+                new_node.parent = nearest_node
+                new_node.cost = nearest_node.cost + np.linalg.norm(new_node.joint_angles - nearest_node.joint_angles)
+                self.node_list.append(new_node)
+
+                if np.linalg.norm(new_node.joint_angles - self.q_goal.joint_angles) < self.step_size:
+                    if not check_edge_collision(self.robot_id, self.obstacle_ids, new_node.joint_angles, self.q_goal.joint_angles):
+                        self.q_goal.parent = new_node
+                        self.q_goal.cost = new_node.cost + np.linalg.norm(self.q_goal.joint_angles - new_node.joint_angles)
+                        self.node_list.append(self.q_goal)
+                        break
+
+
+    def plan_RRT_Star(self, initial_goal_bias=0.1, final_goal_bias=1.0, c_best = float('inf')):
         """Run the RRT* algorithm with dynamically increasing goal bias."""
         for i in range(self.max_iter):
             # Variable increase goal bias over iterations
@@ -208,10 +237,13 @@ class RRT_Star:
 
         return self.node_list
 
-    def get_path(self):
+    def get_path(self, planner="RRT_Star"):
         """Return the path from the start node to the goal node."""
 
-        self.plan()
+        if planner == "RRT_Star":
+            self.plan_RRT_Star()
+        if planner == "RRT":
+            self.plan_RRT()
 
         node = self.q_goal
         while node is not None:
@@ -223,7 +255,7 @@ class RRT_Star:
             
         return self.path[::-1]
 
-    def visualize(self, goal_index=None):
+    def visualize(self, goal_index=None, planner="RRT_Star", trial = 1):
         """Visualize the RRT* tree and path."""
         plt.figure(figsize=(10, 10))
         
@@ -249,8 +281,17 @@ class RRT_Star:
             path_y = [node[1] for node in self.path]
             plt.plot(path_x, path_y, 'r-', linewidth=2)  # Red line for the final path
         
-        plt.title("RRT* Tree and Path")
-        plt.xlabel("Joint Angle 1")
-        plt.ylabel("Joint Angle 2")
-        plt.grid(True)
-        plt.savefig(f"Visualizations/RRT_Star_09_{goal_index:02d}.png")
+        # Save the plot
+        if planner == "RRT":
+            plt.title("RRT Tree and Path")
+            plt.xlabel("Joint Angle 1")
+            plt.ylabel("Joint Angle 2")
+            plt.grid(True)
+            plt.savefig(f"Visualizations/RRT_{trial:02d}_{goal_index:02d}.png")
+
+        if planner == "RRT_Star":
+            plt.title("RRT* Tree and Path")
+            plt.xlabel("Joint Angle 1")
+            plt.ylabel("Joint Angle 2")
+            plt.grid(True)
+            plt.savefig(f"Visualizations/RRT_Star_{trial:02d}_{goal_index:02d}.png")

@@ -7,7 +7,7 @@ import os
 
 from datetime import datetime
 
-from Planners.RRT_Star import RRT_Star,check_node_collision, check_edge_collision
+from Planners.RRT_Star import RRT,check_node_collision, check_edge_collision
 from Planners.RRT import RRTManipulatorPlanner, RealTimeRRT
 from point_cloud import draw_camera_frame, camera_to_world, world_to_camera, get_point_cloud
 from utils import *
@@ -123,10 +123,10 @@ def environment_setup(env_num = 1):
                          block_id]
         # Add Goal IDs
         sphere_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=0.01, rgbaColor=[0, 0, 1, 1])               # Create a visual shape for the sphere (Blue Sphere)
-        goal_id_1 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.3, 0.3], globalScaling = 0.5)       # Create a multi-body for the sphere 1
-        goal_id_2 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[-0.1, -0.4, 0.3], globalScaling = 0.5)    # Create a multi-body for the sphere 2
-        goal_id_3 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.5, 0.3], globalScaling = 0.5)       # Create a multi-body for the sphere 3
-        goal_id_4 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0.1, -0.4, 0.3], globalScaling = 0.5)     # Create a multi-body for the sphere 4
+        goal_id_1 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.275, 0.3], globalScaling = 0.5)       # Create a multi-body for the sphere 1
+        goal_id_2 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[-0.15, -0.4, 0.3], globalScaling = 0.5)    # Create a multi-body for the sphere 2
+        goal_id_3 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0, -0.525, 0.3], globalScaling = 0.5)       # Create a multi-body for the sphere 3
+        goal_id_4 = p.createMultiBody(baseVisualShapeIndex=sphere_visual_shape,basePosition=[0.15, -0.4, 0.3], globalScaling = 0.5)     # Create a multi-body for the sphere 4
         goal_id = [goal_id_1, goal_id_2, goal_id_3, goal_id_4]
 
     # Reset Panda's position to Home Position
@@ -188,28 +188,30 @@ if __name__ == "__main__":
     duration = 1000; fps = 30
     time_steps = int(duration * fps); dt = 1.0 / fps
     
+    # Simulation Parameters
     point_cloud_count = 300
     env_num = 3
-    planner = "RRT_Star"
+    planner = "RRT"
+    trial = 1
 
     # Set the environment
     physics_client, collision_ids, goal_id, robot_id, home_positions = environment_setup(env_num=env_num)
 
     # Get the goal position
-    # goal_positions = [home_positions]
-    # for goal in goal_id:
-    #     collision_flag = True
-    #     while collision_flag:
-    #         joint_angles = np.array(inverse_kinematics(robot_id, target_position=p.getBasePositionAndOrientation(goal)[0]))
-    #         collision_flag = check_node_collision(robot_id=robot_id, object_ids=collision_ids, joint_position=joint_angles)
-    #     goal_positions.append(joint_angles)
+    goal_positions = [home_positions]
+    for goal in goal_id:
+        collision_flag = True
+        while collision_flag:
+            joint_angles = np.array(inverse_kinematics(robot_id, target_position=p.getBasePositionAndOrientation(goal)[0]))
+            collision_flag = check_node_collision(robot_id=robot_id, object_ids=collision_ids, joint_position=joint_angles)
+        goal_positions.append(joint_angles)
 
     # Set Goal Positions Manually
-    goal_positions = [[0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]]
-    # goal_positions.append([ 1.97188, 1.07719, 2.95013, -2.52129, 2.89555, 3.79802, -2.05033])
-    # goal_positions.append([ 2.69055, 1.76893, 2.18599, -2.28916, 2.47068, 3.64461, -0.79935])
-    # goal_positions.append([ 2.72501, -1.37319, 1.40152, -1.32626, -0.15509, 1.31711, -0.98499])
-    goal_positions.append([-0.08591, 1.8026, -2.12464, -1.71271, 0.10433, 1.1911, -0.8379])
+    # goal_positions = [[0.0, -0.485, 0.0, -1.056, 0.0, 0.7, 0.785]]
+    # goal_positions.append([-0.65549, -1.30695, -0.4486, -2.49946, -0.56846, 1.58664, 1.44348])
+    # goal_positions.append([0.01681, -1.47467, -1.19143, -1.64938, -0.03284, 1.0331, 1.12646])
+    # goal_positions.append([0.7525, -1.40687, -1.62129, -1.06531, 0.62093, 0.7293, -0.17201])
+    # goal_positions.append([0.16114, -0.56954, -0.70797, -2.31241, -1.41054, 1.06115, -2.65308])
 
     # Move to all goal positions to check for collisions
     for i,goal_position in enumerate(goal_positions):
@@ -220,9 +222,22 @@ if __name__ == "__main__":
 
     # Create and setup environment
     if planner == "RRT":
-        print(f"Get Position from ID: {get_position_from_id(goal_id[0])[0]}")
-        planner = RRTManipulatorPlanner(robot_id= robot_id, collision_ids=collision_ids)
-        planner.run(get_position_from_id(goal_id[0])[0])
+        path_saved = np.array([goal_positions[0]]) # Start at the first goal position
+        for i in range(1, len(goal_positions)):
+            print(f"\nRunning RRT Motion Planner for goal position {i}")
+            print(f"Start position: {np.round(goal_positions[i-1],5)}")
+            print(f"Goal position: {np.round(goal_positions[i],5)}")
+
+            # Initialize the RRT planner
+            rrt = RRT(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=robot_id, obstacle_ids=collision_ids, max_iter=2000, step_size=0.5)
+
+            # Run the RRT planner
+            path_saved = np.concatenate((path_saved, rrt.get_path()), axis=0)
+
+            # Visualize the path
+            rrt.visualize(goal_index = i, planner=planner, trial = trial)
+
+        print(f"Path saved: {np.round(path_saved,5)}")
     elif planner == "RRT_Star":
         path_saved = np.array([goal_positions[0]]) # Start at the first goal position
         for i in range(1, len(goal_positions)):
@@ -231,13 +246,13 @@ if __name__ == "__main__":
             print(f"Goal position: {np.round(goal_positions[i],5)}")
 
             # Initialize the RRT planner
-            rrt = RRT_Star(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=robot_id, obstacle_ids=collision_ids, max_iter=2000, step_size=0.75)
+            rrt = RRT(q_start=goal_positions[i-1], q_goal=goal_positions[i], robot_id=robot_id, obstacle_ids=collision_ids, max_iter=2000, step_size=0.75)
 
             # Run the RRT planner
             path_saved = np.concatenate((path_saved, rrt.get_path()), axis=0)
 
             # Visualize the path
-            rrt.visualize(goal_index = i)
+            rrt.visualize(goal_index = i, planner=planner, trial = trial)
 
         print(f"Path saved: {np.round(path_saved,5)}")
 
@@ -317,6 +332,13 @@ if __name__ == "__main__":
             frame = p.getCameraImage(1280, 960)
             frames_list.append(frame[2])
             
+            # Change the color of the goal that has been reached
+            if any(np.allclose(waypoint, goal) for goal in goal_positions[1:]):
+                goal_index = next(i for i, goal in enumerate(goal_positions[1:], 1) if np.allclose(waypoint, goal)) - 1 
+                p.changeVisualShape(goal_id[goal_index], -1, rgbaColor=[0, 1, 0, 1])  # Change color to green
+                print(f"Goal Reached: {goal_index}")
+                print(f"Goal position {goal_index}: {np.round(goal_positions[goal_index+1], 5)}")
+
             # Update the waypoint to the next one
             try:
                 waypoint = next(path_iterator)
@@ -326,7 +348,7 @@ if __name__ == "__main__":
         else:
             # Calculate the target positions to reach the next waypoint
             for joint_index, target_position in enumerate(waypoint):  
-                p.setJointMotorControl2(bodyIndex=robot_id, jointIndex=joint_index, controlMode=p.POSITION_CONTROL, targetPosition=target_position, positionGain=0.03, velocityGain=1.0, maxVelocity=0.1)
+                p.setJointMotorControl2(bodyIndex=robot_id, jointIndex=joint_index, controlMode=p.POSITION_CONTROL, targetPosition=target_position, positionGain=0.03, velocityGain=1.0, maxVelocity=0.5)
 
         # Take a simulation step
         p.stepSimulation()            
@@ -338,7 +360,7 @@ if __name__ == "__main__":
             for frame in frames_list:
                 writer.append_data(frame)
     if planner == "RRT_Star":
-        with imageio.get_writer('./Video_Demos/RRT_Star_09.gif', mode='I', duration=duration/len(frames_list)) as writer:
+        with imageio.get_writer(f'./Video_Demos/RRT_Star_{trial:02d}.gif', mode='I', duration=duration/len(frames_list)) as writer:
             for frame in frames_list:
                 writer.append_data(frame)
     if planner == "RRT_Real_Time":
